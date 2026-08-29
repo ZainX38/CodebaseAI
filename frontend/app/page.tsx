@@ -1,33 +1,37 @@
+import { useAuth0 } from "@auth0/auth0-react";
 
-function Header() {
-  return (
-    <header className="bg-gray-900 p-8 w-full">
-      <h1 className="text-2xl font-bold">Codebase AI</h1>
-    </header>
-  );
-}
+import { auth0 } from "../lib/auth0"
+import Header from "./components/Header"
+import SignInButton from "./components/SignInButton"
+import Profile from "./components/Profile"
 
-function SignIn() {
-  return (
-    <div className="flex flex-col items-center justify-center p-8 w-2xl h-96
-    bg-linear-to-br from-blue-700 to-sky-950 rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold mb-4">Welcome to Codebase AI</h2>
-      <p className="text-gray-300 mb-4">Sign in to continue</p>
-      <button>
-        <a className="bg-sky-600 text-white py-2 px-4 rounded-md hover:bg-sky-700">
-          Sign in with GitHub
-        </a>
-      </button>
-    </div>
-  );
-}
+export default async function Home() {
+  const session = await auth0.getSession(); // Gets the sessions data
+  const user = session?.user; // Get the user data from the session if available
 
-export default function Home() {
+  if (!session) {
+    return (
+      <>
+        <Header />
+        <SignInButton />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col items-center bg-linear-to-b from-gray-900 via-sky-600 to-gray-800 text-white">
       <Header />
       <main className="flex flex-col items-center justify-center flex-grow p-8">
-        <SignIn />
+        {user && (
+          <>
+            <Profile />
+            <a href="/auth/logout"
+              className="mt-4 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
+              Logout
+            </a>
+          </>
+        )
+        }
       </main>
     </div>
     
