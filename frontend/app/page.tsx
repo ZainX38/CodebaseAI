@@ -1,7 +1,4 @@
-import { useAuth0 } from "@auth0/auth0-react";
-
 import { auth0 } from "../lib/auth0"
-import { sendTokenData } from "@/lib/api"
 import Header from "./components/Header"
 import SignInButton from "./components/SignInButton"
 import Profile from "./components/Profile"
@@ -28,8 +25,7 @@ export default async function Home() {
       <main className="flex flex-col items-center justify-center flex-grow p-8">
         {user && (
           <>
-            {sendTokenData(session.accessToken, user.nickname, "portfolio")}
-            <Profile />
+            <Profile session={session} />
             <a href="/auth/logout"
               className="mt-4 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
               Logout

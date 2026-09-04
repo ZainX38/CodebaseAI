@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Any
 
 app = FastAPI(title="Codebase AI")
 
@@ -11,10 +13,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/test/zain")
-async def keso():
-    return "zain"
+class UserData(BaseModel):
+    owner: str
+    repo_name: str
 
-@app.get("/test/{id}")
-async def root(id: int):
-    return {"message": f"Hello World, {id}!"}
+user_dict = {}
+
+@app.post("/api/repo")
+async def get_user_data(user_data: UserData):
+    print(user_data.owner)
+    user_dict["owner"] = user_data.owner
+    user_dict["repo_name"] = user_data.repo_name
+    return user_dict
+
+@app.get("/api/repo")
+async def display_user_data():
+    return user_dict
