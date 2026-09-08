@@ -8,7 +8,7 @@ export default function SignIn() {
         <h2 className="text-xl font-semibold mb-4">Welcome to Codebase AI</h2>
 
         <button className="mb-8">
-          <a href="/auth/login?connection=github" // connection=github skips the screen hint and directly logs in the user with GitHub as soon as they click the button
+          <a href="/auth/login?" // connection=github skips the screen hint and directly logs in the user with GitHub as soon as they click the button
           className="bg-sky-600 text-white py-2 px-4 rounded-md hover:bg-sky-700">
             Login with GitHub
           </a>

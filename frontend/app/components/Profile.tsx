@@ -27,6 +27,7 @@ export default function Profile({ session }: any) {
     const {user, isLoading} = useUser();
 
     useEffect(() => {
+        console.log("1")
         sendTokenData(session?.tokenSet.accessToken, "ZainX38", "portfolio")
     }, [])
 
