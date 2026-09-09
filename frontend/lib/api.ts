@@ -25,9 +25,20 @@ export async function sendTokenData(token: string | undefined, owner: string | u
             throw new Error(`Error: ${response.status}`);
         }
 
-        return response.json()
+        return {"response": response.json(), "status": response.status}
 
     } catch (error) {
         console.error("Error sending token data:", error);
     }
+}
+
+
+// Gets the Repository data obtained in the backend for the user
+export async function getRepoData() {
+    // method is not defined, so it takes the default 'GET' method
+    const repoData = await fetch(`${BACKEND_URL}/api/repo`)
+    const fetchedRepoData = await repoData.json()
+
+    console.log(fetchedRepoData)
+    return fetchedRepoData
 }
