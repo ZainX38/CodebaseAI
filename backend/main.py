@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Annotated
 
+import httpx
+
 app = FastAPI(title="Codebase AI")
 
 app.add_middleware(
@@ -49,3 +51,21 @@ async def get_user_data(user_data: UserData, request: Request, authorization: An
 async def display_user_data():
     return {"data": user_dict}
 
+
+# ---------------------- Gets repository data from GitHub API --------------
+@app.get("/api/repo")
+async def get_user_repo():
+    github_api = "https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+    # Replace owner, repo and path values with user data
+    github_api_url = github_api.format(
+        owner=user_dict["owner"],
+        repo=user_dict["repo_name"],
+        path="")
+
+    # Gets public repository data
+    # Public as this does not need authorization to access
+    async with httpx.AsyncClient() as client:
+        response = await client.get(github_api_url)
+        repo_data = response.json()
+
+    return repo_data
