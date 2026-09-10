@@ -36,9 +36,15 @@ export async function sendTokenData(token: string | undefined, owner: string | u
 // Gets the Repository data obtained in the backend for the user
 export async function getRepoData() {
     // method is not defined, so it takes the default 'GET' method
-    const repoData = await fetch(`${BACKEND_URL}/api/repo`)
-    const fetchedRepoData = await repoData.json()
+    const response = await fetch(`${BACKEND_URL}/api/repo`)
+    const fetchedRepoData = await response.json()
 
     console.log(fetchedRepoData)
+    
+    if (fetchedRepoData.status != undefined) {
+        console.error("Portfolio with that name does not exist", fetchedRepoData)
+        throw new Error(`Error: ${fetchedRepoData.status}`)
+    }
+
     return fetchedRepoData
 }
