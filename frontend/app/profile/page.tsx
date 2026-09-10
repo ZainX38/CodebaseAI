@@ -1,6 +1,5 @@
 import { auth0 } from "@/lib/auth0"
 import Profile from "../components/Profile"
-import AddRepo from "../components/AddRepo"
 import SvgComponent from "../components/svgLogo";
 
 export default async function userProfile() {
@@ -18,8 +17,7 @@ export default async function userProfile() {
             <main 
                 className="flex flex-col items-center justify-center p-8 bg-white
                 border-2 border-gray-200 rounded-xl shadow-2xl">
-                <Profile />
-                <AddRepo session={session} />
+                <Profile session={session}/>
                 <a href="/auth/logout"
                     className="mt-4 bg-sky-800 text-white py-2 px-4 rounded-md hover:bg-sky-700 transition-colors duration-200">
                     Logout

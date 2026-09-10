@@ -11,7 +11,7 @@ export default function Login() {
 
         <div className="flex flex-col gap-8 bg-white p-8 rounded-2xl border-2 border-gray-200 shadow-xl">
           <button>
-            <a href="/auth/login?" // connection=github skips the screen hint and directly logs in the user with GitHub as soon as they click the button
+            <a href="/auth/login?returnTo=/profile" // connection=github skips the screen hint and directly logs in the user with GitHub as soon as they click the button
             className="bg-sky-800 text-white font-semibold py-4 px-28 rounded-md hover:bg-sky-600 transition-colors duration-75">
               Sign in with GitHub
             </a>

@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 export async function proxy(request: NextRequest) {
     const authResponse = await auth0.middleware(request);
 
+    // Get the session data --> proves authentication as if this exists, user has logged in
+    const session = await auth0.getSession()
+
     // Get path of incoming request
     const path = request.nextUrl.pathname;
 
@@ -17,6 +20,14 @@ export async function proxy(request: NextRequest) {
     let isPrivatePath = false
     if (path === "/profile" || path.startsWith("/profile")) {
         isPrivatePath = true
+    }
+
+    if (session && isPublicPath) {
+        return NextResponse.redirect(new URL("/profile", request.url));
+    }
+
+    if (!session && isPrivatePath) {
+        return NextResponse.redirect(new URL("/", request.url))
     }
 
     // authResponse must always be returned
