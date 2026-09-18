@@ -5,6 +5,8 @@ from pydantic import BaseModel
 from typing import Annotated
 
 import httpx
+import os
+from urllib.parse import quote
 
 app = FastAPI(title="Codebase AI")
 
@@ -46,11 +48,6 @@ async def get_user_data(user_data: UserData, request: Request, authorization: An
 
     return user_dict
 
-# ------------------ Displays the data in the dictionary ----------------
-@app.get("/api/data")
-async def display_user_data():
-    return {"data": user_dict}
-
 
 # ---------------------- Gets repository data from GitHub API --------------
 @app.get("/api/repo")
@@ -62,10 +59,69 @@ async def get_user_repo():
         repo=user_dict["repo_name"],
         path="")
 
+    user_id = "github|152643175"
+
+    github_token = await get_github_token(user_id)
+
     # Gets public repository data
     # Public as this does not need authorization to access
     async with httpx.AsyncClient() as client:
-        response = await client.get(github_api_url)
+        response = await client.get(
+            github_api_url,
+            headers={
+                "Authorization": f"Bearer {github_token}",
+                "Accept": "application/vnd.github+json",
+            }
+        )
         repo_data = response.json()
 
     return repo_data
+
+# --------------------- Gets Auth0 Management API Access Token -----------------
+
+# If getting error with env variables, start server with command: uv run --env-file .env fastapi dev
+# This command loads the env variables before running application
+AUTH0_DOMAIN = os.environ["AUTH0_DOMAIN"]
+AUTH0_CLIENT_ID = os.environ["AUTH0_CLIENT_ID"]
+AUTH0_CLIENT_SECRET = os.environ["AUTH0_CLIENT_SECRET"]
+
+async def get_management_token() -> str:
+    async with httpx.AsyncClient() as client:
+        # This is just OAuth2 flow to access the access token through Auth0 Management API
+        response = await client.post(
+            f"https://{AUTH0_DOMAIN}/oauth/token",
+            data={
+                "grant_type": "client_credentials",         # Shows app is authenticating itself, and not through an interface
+                "client_id": AUTH0_CLIENT_ID,               # Identidies client application
+                "client_secret": AUTH0_CLIENT_SECRET,       # Shows that you have the "secret" to access the app
+                "audience": f"https://{AUTH0_DOMAIN}/api/v2/"   # Specifies the API for which access token is requested
+            },
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return data["access_token"]
+
+# ------------------------- Get GitHub Access Token ------------------------
+async def get_github_token(user_id="github|152643175") -> str:
+    management_token = await get_management_token()
+
+    # URL encoding turns unsafe characters, in this case | from the user id into suitable for the URL path
+    # "|" becomes "%7C"
+    encoded_user_id = quote(user_id, safe="")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://{AUTH0_DOMAIN}/api/v2/users/{encoded_user_id}",
+            headers={
+                "Authorization": f"Bearer {management_token}",
+            },
+        )
+
+        response.raise_for_status()
+
+        user_data = response.json()
+
+        return user_data["identities"][0]["access_token"]

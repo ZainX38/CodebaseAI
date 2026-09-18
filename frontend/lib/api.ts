@@ -41,6 +41,7 @@ export async function getRepoData() {
 
     console.log(fetchedRepoData)
     
+    // The status is always given even if there is an error, if it's given as undefined ==> Error
     if (fetchedRepoData.status != undefined) {
         console.error("Portfolio with that name does not exist", fetchedRepoData)
         throw new Error(`Error: ${fetchedRepoData.status}`)
