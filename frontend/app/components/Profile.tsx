@@ -1,11 +1,8 @@
 "use client"
 
 import { useUser } from "@auth0/nextjs-auth0/client"
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
 import Link from "next/link"
-
-import { sendTokenData } from "@/lib/api";
-import { getRepoData } from "@/lib/api";
 
 function getInitials(name?: string | null): string {
     if (name) {
@@ -25,7 +22,7 @@ function getInitials(name?: string | null): string {
     return "U";
 }
 
-export default function Profile({ session }: any) {
+export default function Profile() {
     const {user, isLoading} = useUser();
 
     const [repoName, setRepoName] = useState<string>("") // TypeScript defines that it is a string
@@ -34,19 +31,9 @@ export default function Profile({ session }: any) {
         return <p className="text-xs text-gray-500">Loading...</p>
     };
 
-    const handleTextChange = (e: any) => {
-        setRepoName(e.target.value);
+    const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
+        setRepoName(event.target.value);
     }
-
-    async function getRepoName() {
-        await sendTokenData(session?.tokenSet.accessToken, session?.user.nickname, repoName)
-        
-            try {
-                const repoData = await getRepoData()
-            } catch {
-                throw new Error("There was an error")
-            }
-        }
 
     if (!user) return null;
 
@@ -68,8 +55,9 @@ export default function Profile({ session }: any) {
                     className="rounded-md py-2 pr-16 pl-2 focus:outline-none placeholder:text-gray-400 border border-gray-400 text-gray-800"
                 ></input>
                 <Link
-                    onClick={getRepoName}
-                    href={`/profile/${[session?.user.nickname]}/${repoName}`}
+                    // encodeURIComponent converts unsafe characters like "/, ?, |" into safe representation for a URL path
+                    // e.g. space (" ") becomes %20
+                    href={`/profile/${encodeURIComponent(user.nickname || "")}/${encodeURIComponent(repoName)}`}
                     className="rounded-md bg-sky-600 p-2 ml-2 hover:opacity-85 duration-100 cursor-pointer"
                     >ADD
                 </Link>

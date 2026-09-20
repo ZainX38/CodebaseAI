@@ -33,7 +33,7 @@ async def get_authenticated_user_id(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")
 
-    # Removes Bearer and whitespaces from the authorization header
+    # Removes Bearer and whitespaces from the start and end of the authorization header
     access_token = authorization.removeprefix("Bearer ").strip()
 
     # Get user information from Auth0 using access token
@@ -50,7 +50,7 @@ async def get_authenticated_user_id(authorization: str | None) -> str:
     # The sub field has the Auth0 ID: e.g. {"sub": "github|123456", "name": "ZainX38"}
     user_id = response.json().get("sub")
 
-    # If user not found, 404 Not Found
+    # Reject response if Auth0 didn't provide a "sub" value
     if not user_id:
         raise HTTPException(status_code=404, detail="Unable to identify user")
 
@@ -62,7 +62,9 @@ async def get_management_token() -> str:
     async with httpx.AsyncClient() as client:
         # This is the OAuth2 flow used by the application to access the Auth0 Management API
         # A POST request is sent with all the data by submitting information to Auth0
-        # Auth0's Management API is accessed granting the permissions read:users, read:user_idp_tokens
+        # The Auth0 app must be configured with the following scopes for this to work:
+        # read:users and read:user_idp_tokens
+        # These permissions aren't granted in the code but in the Auth0 application
         response = await client.post(
             f"https://{AUTH0_DOMAIN}/oauth/token",
             data={
@@ -73,7 +75,8 @@ async def get_management_token() -> str:
             },
         )
 
-    # Stops the code from executing if there was an error with the request
+    # Raise an HTTPX exception for an unsuccessful response.
+    # Prevent extracting an access token from a failed request.
     response.raise_for_status()
 
     return response.json()["access_token"]
@@ -86,8 +89,8 @@ async def get_github_token(user_id: str) -> str:
     # URL encoding turns unsafe characters, in this case | from the user id, into a suitable URL path
     encoded_user_id = quote(user_id, safe="")
 
-    # Get GitHub access token from Auth0's Management API in the specified endpoint
-    # The endpoint retrieves data by the user id
+    # Retrieves the user's Auth0 profile information, including linked-identity
+    # Management API token authorizes access to the endpoint
     async with httpx.AsyncClient() as client:
         response = await client.get(
             f"https://{AUTH0_DOMAIN}/api/v2/users/{encoded_user_id}",
@@ -102,9 +105,9 @@ async def get_github_token(user_id: str) -> str:
 
     # This is just an iteration until "provider" == "github"
     # FOR loop could also be used
-    # next(generator, None) is used because there is only one instance when "provider" == "github", so
-    # instead of looping through all the identities array, it just returns the first instance when it's true
-    # If nothing is found, it returns the default None
+    # It finds the first linked GitHub identity.
+    # The generator stops at the first match; next() returns None if none exists.
+    # This prevents unecessary iterations
     github_identity = next(
         (identity for identity in identities if identity.get("provider") == "github"),
         None,
@@ -192,9 +195,6 @@ async def get_repository_contents(
     # If we raise an error with HTTPException, we are signaling the error and terminate endpoint processing
     if contents.get("type") != "file":
         raise HTTPException(status_code=415, detail="This repository item cannot be displayed")
-
-    if contents.get("encoding") != "base64" or not contents.get("content"):
-        raise HTTPException(status_code=413, detail="This file is too large to display")
 
     try:
         # GitHub represents small file contents as Base64-encoded text.
