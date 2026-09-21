@@ -13,7 +13,7 @@ import { sortEntries } from "../utils/sortEntries";
 // Responsible for rendering one level of a directory tree
 function FileTree({entries, owner, repoName, level, onFileSelect}: FileTreeProps) {
     return (
-        <ul>
+        <ul className="space-y-0.5">
             {sortEntries(entries).map((entry) => (
                 entry.type === "dir" ? (
                     <Folder
@@ -30,12 +30,22 @@ function FileTree({entries, owner, repoName, level, onFileSelect}: FileTreeProps
                         <button
                             type="button"
                             onClick={() => onFileSelect(entry)}
-                            className="w-full truncate py-1 pr-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                            style={{paddingLeft: `${level * 16 + 12}px`}}
+                            className="group flex w-full items-center gap-2 rounded-md py-2 pr-3 text-left text-sm text-slate-600 transition-colors hover:bg-sky-50 hover:text-sky-900 focus:bg-sky-100 focus:text-sky-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-400"
+                            style={{paddingLeft: `${level * 16 + 16}px`}}
                             title={entry.path}
                         >
-                            <span className="mr-2 text-gray-400">▱</span>
-                            {entry.name}
+                            <svg
+                                aria-hidden="true"
+                                className="size-4 shrink-0 text-slate-400 transition-colors group-hover:text-sky-600 group-focus:text-sky-700"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 2.25H6.75A2.25 2.25 0 0 0 4.5 4.5v15a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-12L14.25 2.25Z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M14.25 2.25V7.5h5.25" />
+                            </svg>
+                            <span className="truncate">{entry.name}</span>
                         </button>
                     </li>
                 )
@@ -90,22 +100,46 @@ function Folder({entry, owner, repoName, level, onFileSelect}: FolderProps) {
             <button
                 type="button"
                 onClick={toggleFolder}
-                className="w-full truncate py-1 pr-2 text-left text-sm font-medium text-gray-800 hover:bg-gray-100"
-                style={{paddingLeft: `${level * 16 + 8}px`}}
+                className={`group flex w-full items-center gap-2 rounded-md py-2 pr-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sky-300 ${
+                    isExpanded
+                        ? "bg-sky-50 text-sky-950"
+                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                }`}
+                style={{paddingLeft: `${level * 16 + 12}px`}}
                 title={entry.path}
                 aria-expanded={isExpanded}
             >
-                <span className="mr-2 inline-block w-3 text-gray-500">{isExpanded ? "⌄" : "›"}</span>
-                {entry.name}
+                <svg
+                    aria-hidden="true"
+                    className={`size-3 shrink-0 transition-transform ${isExpanded ? "rotate-90 text-sky-700" : "text-slate-400"}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m9 5 7 7-7 7" />
+                </svg>
+                <svg
+                    aria-hidden="true"
+                    className="size-4 shrink-0 text-amber-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75A2.25 2.25 0 0 1 6 4.5h3.879c.597 0 1.169.237 1.591.659l1.371 1.371c.422.422.994.659 1.591.659H18A2.25 2.25 0 0 1 20.25 9.44v7.81A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25V6.75Z" />
+                </svg>
+                <span className="truncate">{entry.name}</span>
             </button>
 
             {isExpanded && isLoading && (
-                <p className="py-1 text-xs text-gray-500" style={{paddingLeft: `${(level + 1) * 16 + 12}px`}}>
-                    Loading...
+                <p className="flex items-center gap-2 py-2 text-xs text-slate-500" style={{paddingLeft: `${(level + 1) * 16 + 16}px`}}>
+                    <span className="size-1.5 rounded-full bg-sky-500"></span>
+                    <span>Loading...</span>
                 </p>
             )}
             {isExpanded && error && (
-                <p className="py-1 pr-2 text-xs text-red-600" style={{paddingLeft: `${(level + 1) * 16 + 12}px`}}>
+                <p className="py-2 pr-3 text-xs leading-5 text-red-600" style={{paddingLeft: `${(level + 1) * 16 + 16}px`}}>
                     {error}
                 </p>
             )}
@@ -131,22 +165,48 @@ export default function RepositoryTree({
     onFileSelect,
 }: RepositoryTreeProps) {
     return (
-        <aside className="overflow-auto border-b border-gray-300 md:border-r md:border-b-0">
-            <div className="border-b border-gray-200 px-3 py-2 text-xs font-semibold tracking-wide text-gray-500 uppercase">
-                Explorer
+        <aside className="flex min-h-72 min-w-0 flex-col overflow-hidden border-b border-slate-300 bg-white md:min-h-0 md:border-b-0">
+            <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4">
+                <span className="flex size-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
+                    <svg
+                        aria-hidden="true"
+                        className="size-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75A2.25 2.25 0 0 1 6 4.5h3.879c.597 0 1.169.237 1.591.659l1.371 1.371c.422.422.994.659 1.591.659H18A2.25 2.25 0 0 1 20.25 9.44v7.81A2.25 2.25 0 0 1 18 19.5H6a2.25 2.25 0 0 1-2.25-2.25V6.75Z" />
+                    </svg>
+                </span>
+                <div>
+                    <p className="text-sm font-semibold text-slate-800">Repository files</p>
+                    <p className="text-xs text-slate-500">Browse folders and files</p>
+                </div>
             </div>
 
-            {isLoading && <p className="p-3 text-sm text-gray-500">Loading repository...</p>}
-            {error && <p className="p-3 text-sm text-red-600">{error}</p>}
-            {!isLoading && !error && (
-                <FileTree
-                    entries={entries}
-                    owner={owner}
-                    repoName={repoName}
-                    level={0}
-                    onFileSelect={onFileSelect}
-                />
-            )}
+            <div className="min-h-0 flex-1 overflow-auto p-2">
+                {isLoading && (
+                    <div className="flex items-center gap-2 rounded-lg px-3 py-4 text-sm text-slate-500">
+                        <span className="size-2 rounded-full bg-sky-500"></span>
+                        <span>Loading repository...</span>
+                    </div>
+                )}
+                {error && (
+                    <p className="m-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm leading-5 text-red-700">
+                        {error}
+                    </p>
+                )}
+                {!isLoading && !error && (
+                    <FileTree
+                        entries={entries}
+                        owner={owner}
+                        repoName={repoName}
+                        level={0}
+                        onFileSelect={onFileSelect}
+                    />
+                )}
+            </div>
         </aside>
     );
 }
