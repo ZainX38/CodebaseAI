@@ -8,7 +8,7 @@ export default async function userProfile() {
             <SvgComponent />
 
             <main 
-                className="flex flex-col items-center justify-center p-8 bg-white
+                className="flex w-full max-w-3xl flex-col items-center justify-center p-8 bg-white
                 border-2 border-gray-200 rounded-xl shadow-2xl">
                 <Profile/>
                 <a href="/auth/logout"

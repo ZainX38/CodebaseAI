@@ -10,6 +10,13 @@ export type RepositoryFile = {
     content: string;
 }
 
+export type Repository = {
+    name: string;
+    description: string | null;
+    private: boolean;
+    owner: string;
+}
+
 // path is given a default value of ""
 function getRepositoryContentsUrl(owner: string, repoName: string, path: string = ""): string {
     // E.g. path = "src/components/Button.tsx"
@@ -41,6 +48,11 @@ async function getResponseData<T>(response: Response): Promise<T> {
 }
 
 // ------------------------------ MAIN EXPORTS ----------------------------------
+
+export async function getRepositories(): Promise<Repository[]> {
+    const response = await fetch("/api/repositories");
+    return getResponseData<Repository[]>(response);
+}
 
 // It should return a Promise as an array of RepositoryEntrys
 // path is given a default value of an empty string, meaning that path is optional to be provided

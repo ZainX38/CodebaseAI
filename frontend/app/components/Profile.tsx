@@ -1,8 +1,10 @@
 "use client"
 
 import { useUser } from "@auth0/nextjs-auth0/client"
-import { ChangeEvent, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link"
+
+import {getRepositories, Repository} from "@/lib/api";
 
 function getInitials(name?: string | null): string {
     if (name) {
@@ -25,15 +27,38 @@ function getInitials(name?: string | null): string {
 export default function Profile() {
     const {user, isLoading} = useUser();
 
-    const [repoName, setRepoName] = useState<string>("") // TypeScript defines that it is a string
+    const [repositories, setRepositories] = useState<Repository[]>([]);
+    const [isRepositoriesLoading, setIsRepositoriesLoading] = useState(true);
+    const [repositoriesError, setRepositoriesError] = useState("");
+
+    useEffect(() => {
+        if (!user) return;
+
+        let isCurrentRequest = true;
+
+        async function loadRepositories() {
+            try {
+                const userRepositories = await getRepositories();
+                if (isCurrentRequest) setRepositories(userRepositories);
+            } catch (error) {
+                if (isCurrentRequest) {
+                    setRepositoriesError(error instanceof Error ? error.message : "Repositories could not be loaded");
+                }
+            } finally {
+                if (isCurrentRequest) setIsRepositoriesLoading(false);
+            }
+        }
+
+        loadRepositories();
+
+        return () => {
+            isCurrentRequest = false;
+        };
+    }, [user]);
 
     if (isLoading) {
         return <p className="text-xs text-gray-500">Loading...</p>
     };
-
-    const handleTextChange = (event: ChangeEvent<HTMLInputElement>) => {
-        setRepoName(event.target.value);
-    }
 
     if (!user) return null;
 
@@ -46,21 +71,35 @@ export default function Profile() {
                 <span className="truncate text-md font-semibold">{user.nickname}</span>
             </div>
 
-            <div className="mt-10 mb-10">
-                <input 
-                    type="text"
-                    value={repoName}
-                    onChange={handleTextChange}
-                    placeholder="Enter Repository Name"
-                    className="rounded-md py-2 pr-16 pl-2 focus:outline-none placeholder:text-gray-400 border border-gray-400 text-gray-800"
-                ></input>
-                <Link
-                    // encodeURIComponent converts unsafe characters like "/, ?, |" into safe representation for a URL path
-                    // e.g. space (" ") becomes %20
-                    href={`/profile/${encodeURIComponent(user.nickname || "")}/${encodeURIComponent(repoName)}`}
-                    className="rounded-md bg-sky-600 p-2 ml-2 hover:opacity-85 duration-100 cursor-pointer"
-                    >ADD
-                </Link>
+            <div className="mt-8 w-full text-gray-800">
+                <h1 className="mb-4 text-xl font-semibold">Repositories</h1>
+
+                {isRepositoriesLoading && <p className="text-sm text-gray-500">Loading repositories...</p>}
+                {repositoriesError && <p className="text-sm text-red-600">{repositoriesError}</p>}
+                {!isRepositoriesLoading && !repositoriesError && repositories.length === 0 && (
+                    <p className="text-sm text-gray-500">No repositories found.</p>
+                )}
+
+                <ul className="space-y-3">
+                    {repositories.map((repository) => (
+                        <li key={`${repository.owner}/${repository.name}`}>
+                            <Link
+                                href={`/profile/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}`}
+                                className="block rounded-md border border-gray-300 p-3 hover:bg-gray-50"
+                            >
+                                <div className="flex items-center justify-between gap-4">
+                                    <h2 className="font-semibold">{repository.name}</h2>
+                                    <span className="text-xs text-gray-500">
+                                        {repository.private ? "Private" : "Public"}
+                                    </span>
+                                </div>
+                                <p className="mt-1 text-sm text-gray-600">
+                                    {repository.description || "No description"}
+                                </p>
+                            </Link>
+                        </li>
+                    ))}
+                </ul>
             </div>
         </>
     );

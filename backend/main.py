@@ -136,6 +136,59 @@ def get_github_contents_url(owner: str, repo_name: str, path: str) -> str:
     return github_api_url
 
 
+# ---------------------- Gets repositories from GitHub API --------------------
+@app.get("/api/repositories")
+async def get_repositories(
+    authorization: Annotated[str | None, Header()] = None,
+):
+    user_id = await get_authenticated_user_id(authorization)
+    github_token = await get_github_token(user_id)
+    repositories = []
+    page = 1
+    per_page = 100
+
+    async with httpx.AsyncClient() as client:
+        while True:
+            response = await client.get(
+                "https://api.github.com/user/repos",
+                headers={
+                    "Authorization": f"Bearer {github_token}",
+                    "Accept": "application/vnd.github+json",
+                },
+                params={
+                    "visibility": "all",
+                    "affiliation": "owner,collaborator,organization_member",
+                    "per_page": per_page,
+                    "page": page,
+                },
+            )
+
+            if not response.is_success:
+                status_code = response.status_code if response.status_code < 500 else 502
+                raise HTTPException(
+                    status_code=status_code,
+                    detail="Repositories could not be loaded",
+                )
+
+            page_repositories = response.json()
+            repositories.extend(page_repositories)
+
+            if len(page_repositories) < per_page:
+                break
+
+            page += 1
+
+    return [
+        {
+            "name": repository["name"],
+            "description": repository.get("description"),
+            "private": repository["private"],
+            "owner": repository["owner"]["login"],
+        }
+        for repository in repositories
+    ]
+
+
 # ---------------------- Gets repository contents from GitHub API --------------
 # The first route handles the repository root.
 # The second handles nested paths; {path:path} captures the remaining URL
