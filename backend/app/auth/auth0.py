@@ -1,7 +1,20 @@
+import asyncio
+import time
+
 from fastapi import HTTPException
 import httpx
 
 from app.config import AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, AUTH0_DOMAIN
+
+
+# ---------------- Management API token cache ----------------
+# Shared by all requests: this token belongs to the application, not to a user
+_management_token: str | None = None
+_management_token_expires_at: float = 0.0
+_management_token_lock = asyncio.Lock()
+
+# Refresh the token this many seconds before it actually expires
+TOKEN_EXPIRY_MARGIN_SECONDS = 60
 
 
 # It gets authorization header as a parameter
@@ -37,24 +50,41 @@ async def get_authenticated_user_id(authorization: str | None) -> str:
 
 # --------------------- Gets Auth0 Management API Access Token -----------------
 async def get_management_token() -> str:
-    async with httpx.AsyncClient() as client:
-        # This is the OAuth2 flow used by the application to access the Auth0 Management API
-        # A POST request is sent with all the data by submitting information to Auth0
-        # The Auth0 app must be configured with the following scopes for this to work:
-        # read:users and read:user_idp_tokens
-        # These permissions aren't granted in the code but in the Auth0 application
-        response = await client.post(
-            f"https://{AUTH0_DOMAIN}/oauth/token",
-            data={
-                "grant_type": "client_credentials",
-                "client_id": AUTH0_CLIENT_ID,
-                "client_secret": AUTH0_CLIENT_SECRET,
-                "audience": f"https://{AUTH0_DOMAIN}/api/v2/",
-            },
+    global _management_token, _management_token_expires_at
+
+    # 1. Fast path: valid cached token --> reuse it
+    if _management_token and time.monotonic() < _management_token_expires_at:
+        print("[auth0] Using CACHED Management API token")
+        return _management_token
+
+    # 2. Only one request at a time can fetch a new token
+    async with _management_token_lock:
+        # 3. Check again: another request may have refreshed it while we waited
+        if _management_token and time.monotonic() < _management_token_expires_at:
+            print("[auth0] Token was refreshed by another request while waiting")
+            return _management_token
+
+        async with httpx.AsyncClient() as client:
+            # The Auth0 app must be configured with the scopes:
+            # read:users and read:user_idp_tokens
+            response = await client.post(
+                f"https://{AUTH0_DOMAIN}/oauth/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": AUTH0_CLIENT_ID,
+                    "client_secret": AUTH0_CLIENT_SECRET,
+                    "audience": f"https://{AUTH0_DOMAIN}/api/v2/",
+                },
+            )
+
+        response.raise_for_status()
+
+        # 4. Save the token and when it expires
+        token_data = response.json()
+        _management_token = token_data["access_token"]
+        _management_token_expires_at = (
+            time.monotonic() + token_data["expires_in"] - TOKEN_EXPIRY_MARGIN_SECONDS
         )
 
-    # Raise an HTTPX exception for an unsuccessful response.
-    # Prevent extracting an access token from a failed request.
-    response.raise_for_status()
-
-    return response.json()["access_token"]
+        print(f"[auth0] Requested NEW Management API token (valid for {token_data['expires_in']}s)")
+        return _management_token
