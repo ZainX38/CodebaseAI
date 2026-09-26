@@ -43,7 +43,7 @@ export default function Login() {
         </div>
           
 
-        <p className="text-gray-700">Don't have an account? 
+        <p className="text-gray-700">Don&apos;t have an account? 
           <a 
             className="text-sky-700 font-semibold hover:text-blue-700 transition-colors 
             duration-75 cursor-pointer"
