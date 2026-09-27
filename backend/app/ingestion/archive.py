@@ -18,6 +18,11 @@ from app.config import (
 )
 from app.github.client import get_github_headers, raise_for_github_error
 from app.github.urls import get_github_tarball_url
+from app.ingestion.filters import (
+    get_content_exclusion_reason,
+    get_excluded_directory,
+    get_path_exclusion_reason,
+)
 
 
 # files: path --> text of every file that is kept
@@ -127,12 +132,24 @@ def _read_archive(archive_bytes: bytes) -> ExtractedFiles:
             if path is None or path in extracted.files:
                 continue
 
+            excluded_directory = get_excluded_directory(path)
+            if excluded_directory:
+                # Recorded once per folder, so a committed node_modules/ is one entry, not thousands
+                extracted.excluded.setdefault(excluded_directory, "dependencies, build output or cache")
+                continue
+
             # Directories are rebuilt from the file paths. Symlinks and hardlinks could
             # point anywhere, so only regular files are read
             if member.isdir():
                 continue
             if not member.isreg():
                 extracted.excluded[path] = "link, not a regular file"
+                continue
+
+            # Lockfiles, binaries, credentials... are skipped by their path, before being read
+            path_reason = get_path_exclusion_reason(path)
+            if path_reason:
+                extracted.excluded[path] = path_reason
                 continue
 
             # The size is in the tar header, so big files are skipped without reading them
@@ -153,6 +170,11 @@ def _read_archive(archive_bytes: bytes) -> ExtractedFiles:
                 continue
 
             raw_content = file_object.read()
+            content_reason = get_content_exclusion_reason(raw_content)
+            if content_reason:
+                extracted.excluded[path] = content_reason
+                continue
+
             try:
                 content = raw_content.decode("utf-8")
             except UnicodeDecodeError:
