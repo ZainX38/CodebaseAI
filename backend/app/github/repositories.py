@@ -5,7 +5,12 @@ from fastapi import HTTPException
 import httpx
 
 from app.github.client import get_github_headers, raise_for_github_error
-from app.github.urls import get_github_contents_url, get_github_repositories_url
+from app.github.urls import (
+    get_github_commit_url,
+    get_github_contents_url,
+    get_github_repositories_url,
+    get_github_repository_url,
+)
 
 
 # ---------------------- Gets repositories from GitHub API --------------------
@@ -110,3 +115,62 @@ async def get_repository_contents(
         "path": contents["path"],
         "content": file_content,
     }
+
+
+# ---------------------- Gets repository metadata from GitHub API --------------
+# This request uses the logged-in user's token, so it doubles as the access check:
+# GitHub only returns a repository the user is allowed to read (404 otherwise)
+async def get_repository_metadata(
+    github_token: str,
+    owner: str,
+    repo_name: str,
+) -> dict[str, Any]:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            get_github_repository_url(owner, repo_name),
+            headers=get_github_headers(github_token),
+        )
+
+    raise_for_github_error(
+        response,
+        "Repository could not be loaded",
+        {
+            404: "Repository not found or you don't have access to it",
+            403: "GitHub denied access to this repository",
+        },
+    )
+
+    repository = response.json()
+    return {
+        "owner": repository["owner"]["login"],
+        "name": repository["name"],
+        "default_branch": repository["default_branch"],
+        "private": repository["private"],
+    }
+
+
+# ---------------------- Gets the latest commit of a branch -------------------
+# Everything indexed afterwards is pinned to this SHA, so citations keep pointing
+# at the same lines even if new commits are pushed later
+async def get_latest_commit_sha(
+    github_token: str,
+    owner: str,
+    repo_name: str,
+    branch: str,
+) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            get_github_commit_url(owner, repo_name, branch),
+            headers=get_github_headers(github_token),
+        )
+
+    raise_for_github_error(
+        response,
+        "Latest commit could not be loaded",
+        {
+            404: "Branch not found",
+            409: "Repository is empty",
+        },
+    )
+
+    return response.json()["sha"]
