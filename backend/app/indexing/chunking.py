@@ -1,7 +1,9 @@
+import ast
 from dataclasses import dataclass
 from hashlib import sha256
 from io import StringIO
 from pathlib import PurePosixPath
+import warnings
 
 from app.config import MAX_CHUNK_CHARS, MAX_LINE_CHARS, WINDOW_LINES, WINDOW_OVERLAP_LINES
 
@@ -134,9 +136,168 @@ def window_chunks(
     return chunks
 
 
+# ---------------------- Python: one chunk per function and class ------------
+@dataclass(frozen=True)
+class SymbolSpan:
+    start_line: int
+    end_line: int
+    symbol: str
+    kind: str
+
+
+FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+# Blocks whose body can contain definitions, e.g. "if TYPE_CHECKING:" or
+# "try: ... except ImportError: def fallback(): ..."
+CompoundNode = ast.If | ast.Try | ast.TryStar | ast.With | ast.AsyncWith
+
+
+def get_indent(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+# Decorators belong to the function (@property, @app.get(...)) but ast's lineno
+# points at the "def" line, so the chunk starts at the first decorator instead.
+# floor is the last line already used by something else, so lines are never shared
+def get_definition_start(lines: list[str], node: FunctionNode | ast.ClassDef, floor: int) -> int:
+    start = min([node.lineno] + [decorator.lineno for decorator in node.decorator_list])
+
+    # A decorator written as "@(\n    decorator\n)" reports the line after the "@",
+    # so it walks up to the line that actually starts with "@"
+    if node.decorator_list:
+        while start - 1 > floor and not lines[start - 1].lstrip().startswith("@"):
+            start -= 1
+
+    return start
+
+
+# A comment block right above a definition usually explains it, so it is included.
+# Only comments with the same indentation count, so a comment at the end of a class
+# body is not attached to the next top-level function
+def include_leading_comments(lines: list[str], start_line: int, floor: int) -> int:
+    definition_indent = get_indent(lines[start_line - 1])
+    first_line = start_line
+
+    while first_line - 1 > floor:
+        line = lines[first_line - 2]
+        if not line.lstrip().startswith("#") or get_indent(line) != definition_indent:
+            break
+        first_line -= 1
+
+    # A block that reaches line 1 is the file header (shebang, licence), not
+    # documentation for this one function
+    return start_line if first_line == 1 else first_line
+
+
+# Yields every definition in a body (including inside if/try/with blocks) with the
+# last line used before it, which stops comments from being taken from earlier code
+def iter_definitions(body: list[ast.stmt], floor: int):
+    for node in body:
+        if isinstance(node, FunctionNode | ast.ClassDef):
+            yield node, floor
+        elif isinstance(node, CompoundNode):
+            blocks = [node.body, getattr(node, "orelse", []), getattr(node, "finalbody", [])]
+            blocks[1:1] = [handler.body for handler in getattr(node, "handlers", [])]
+            block_floor = node.lineno
+            for block in blocks:
+                yield from iter_definitions(block, block_floor)
+                if block:
+                    block_floor = block[-1].end_lineno
+        floor = max(floor, node.end_lineno)
+
+
+def get_symbol_start(lines: list[str], node: FunctionNode | ast.ClassDef, floor: int) -> int:
+    return include_leading_comments(lines, get_definition_start(lines, node, floor), floor)
+
+
+# Walks the module and finds every function, class and method.
+# A class is split into its "header" (class line, docstring, attributes up to the
+# first method) and one chunk per method, so no line ends up in two chunks.
+# Nested functions stay inside their parent function's chunk
+def get_python_symbol_spans(tree: ast.Module, lines: list[str]) -> list[SymbolSpan]:
+    spans = []
+
+    def visit(body: list[ast.stmt], prefix: str, floor: int) -> None:
+        for node, node_floor in iter_definitions(body, floor):
+            start = get_symbol_start(lines, node, node_floor)
+
+            if isinstance(node, FunctionNode):
+                kind = "method" if prefix else "function"
+                spans.append(SymbolSpan(start, node.end_lineno, prefix + node.name, kind))
+                continue
+
+            qualified_name = prefix + node.name
+            first_member = next(iter_definitions(node.body, start), None)
+            # The header stops before the first method and the comments above it
+            header_end = get_symbol_start(lines, *first_member) - 1 if first_member else node.end_lineno
+
+            # Defensive: a header needs at least one line before it becomes a chunk
+            if header_end >= start:
+                spans.append(SymbolSpan(start, header_end, qualified_name, "class"))
+            visit(node.body, qualified_name + ".", max(header_end, start))
+
+    visit(tree.body, "", 0)
+    return spans
+
+
+def chunk_python_file(path: str, lines: list[str], tree: ast.Module, commit_sha: str) -> list[Chunk]:
+    chunks = []
+    covered_lines = set()
+
+    for span in get_python_symbol_spans(tree, lines):
+        span_lines = lines[span.start_line - 1 : span.end_line]
+        covered_lines.update(range(span.start_line, span.end_line + 1))
+        fits = sum(map(len, span_lines)) <= MAX_CHUNK_CHARS and all(len(line) <= MAX_LINE_CHARS for line in span_lines)
+
+        if fits:
+            chunks.append(make_chunk(lines, path, span.start_line, span.end_line, commit_sha, span.symbol, span.kind))
+        else:
+            # A function that is too long becomes several windows that all keep its name,
+            # so a search for the function still finds every part of it
+            chunks.extend(window_chunks(lines, path, commit_sha, span.start_line, span.end_line, span.symbol, span.kind))
+
+    # Code outside any function or class (imports, constants, if __name__ == "__main__")
+    # is split into normal windows, one group of consecutive lines at a time
+    gap_start = None
+    for line_number in range(1, len(lines) + 2):
+        is_gap = line_number <= len(lines) and line_number not in covered_lines
+        if is_gap and gap_start is None:
+            gap_start = line_number
+        elif not is_gap and gap_start is not None:
+            chunks.extend(window_chunks(lines, path, commit_sha, gap_start, line_number - 1))
+            gap_start = None
+
+    return sorted(chunks, key=lambda chunk: (chunk.start_line, chunk.end_line))
+
+
+def parse_python(content: str) -> ast.Module | None:
+    try:
+        # Old code can trigger SyntaxWarnings (e.g. invalid escape sequences). They don't
+        # stop parsing, so they are silenced instead of filling the server logs
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # Python accepts a UTF-8 BOM at the start of a file but ast.parse() on a str
+            # doesn't. Removing it doesn't change any line numbers, and chunk text is
+            # still taken from the original lines
+            return ast.parse(content.removeprefix("﻿"))
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        # Python 2 files, templates with a .py extension, or deeply nested generated code
+        return None
+
+
 # ---------------------- Chunks one file ---------------------------------------
+# Python files are parsed with the standard library ast module (nothing is ever
+# executed). Other languages, and Python files that don't parse, use line windows
 def chunk_file(path: str, content: str, commit_sha: str) -> list[Chunk]:
-    return window_chunks(split_lines(content), path, commit_sha)
+    lines = split_lines(content)
+
+    if get_language(path) == "python":
+        tree = parse_python(content)
+        if tree is not None:
+            return chunk_python_file(path, lines, tree, commit_sha)
+
+    return window_chunks(lines, path, commit_sha)
 
 
 def chunk_repository(files: dict[str, str], commit_sha: str) -> list[Chunk]:
