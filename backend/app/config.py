@@ -25,3 +25,13 @@ MAX_FILES = 10_000
 MAX_ARCHIVE_ENTRIES = 100_000
 MAX_UNCOMPRESSED_BYTES = 500_000_000
 DOWNLOAD_TIMEOUT_SECONDS = 120  # for the whole download, not each read
+
+# ---------------- Chunking ----------------
+# A chunk must fit comfortably in one embedding request and still be readable
+# as a citation, so long functions are split into windows of this size
+MAX_CHUNK_CHARS = 4_000
+WINDOW_LINES = 60
+WINDOW_OVERLAP_LINES = 10
+# Minified or generated lines are kept in the file (line numbers stay correct)
+# but never put into a chunk
+MAX_LINE_CHARS = 3_000
