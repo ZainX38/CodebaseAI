@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 
 # If getting errors with environment variables, start the server with:
@@ -35,3 +36,29 @@ WINDOW_OVERLAP_LINES = 10
 # Minified or generated lines are kept in the file (line numbers stay correct)
 # but never put into a chunk
 MAX_LINE_CHARS = 3_000
+
+# ---------------- AI providers ----------------
+# "ollama" runs everything locally. "openai" needs OPENAI_API_KEY.
+# Switching the embedding model needs a new index, so the Pinecone index name
+# includes the model (see app/indexing/vector_store.py)
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "ollama").strip().lower()
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_EMBEDDING_MODEL = os.environ.get("OLLAMA_EMBEDDING_MODEL", "qwen3-embedding:0.6b")
+OLLAMA_CHAT_MODEL = os.environ.get("OLLAMA_CHAT_MODEL", "qwen3.5:4b")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_EMBEDDING_MODEL = os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-6-luna")
+AI_TIMEOUT_SECONDS = float(os.environ.get("AI_TIMEOUT_SECONDS", "180"))
+# Fixed before any evaluation run and never tuned afterwards
+CONTEXT_TOKENS = 8192
+MAX_OUTPUT_TOKENS = 700
+EMBEDDING_BATCH_SIZE = 32
+
+# ---------------- Pinecone + local store ----------------
+PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "").strip()
+PINECONE_CLOUD = os.environ.get("PINECONE_CLOUD", "aws")
+PINECONE_REGION = os.environ.get("PINECONE_REGION", "us-east-1")
+# File text, chunks and job status live in SQLite, because BM25 and the symbol
+# lookup need the text and Pinecone only needs the vectors
+DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parents[1] / "data"))
+INDEX_DB_PATH = DATA_DIR / "index.sqlite"
