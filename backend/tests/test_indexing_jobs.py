@@ -1,14 +1,17 @@
 import asyncio
 
 from fastapi import HTTPException
+import httpx
 import pytest
+import respx
 
 from app.ai.providers import ProviderError
+from app.auth.auth0 import get_authenticated_user_id
 from app.indexing import jobs
 from app.indexing.chunking import chunk_file, chunk_repository
 from app.indexing.vector_store import get_namespace, get_namespace_prefix
 from app.ingestion.snapshot import RepositorySnapshot
-from tests.conftest import TEST_USER_ID
+from tests.conftest import OTHER_USER_HEADERS, TEST_USER_ID
 
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -222,6 +225,68 @@ async def test_a_repository_with_nothing_to_index_fails_clearly(fakes, index_sto
     await finish_jobs()
 
     assert index_store.get_job(job["id"])["error"] == "No files in this repository could be indexed"
+
+
+# ---------------------- Auth0 user ID cache ------------------------------------
+@respx.mock
+async def test_user_id_is_cached_so_polling_does_not_hit_the_auth0_rate_limit():
+    userinfo = respx.get("https://test.auth0.local/userinfo").mock(
+        return_value=httpx.Response(200, json={"sub": TEST_USER_ID})
+    )
+
+    for _ in range(5):
+        assert await get_authenticated_user_id("Bearer token-a") == TEST_USER_ID
+
+    assert userinfo.call_count == 1
+
+
+@respx.mock
+async def test_failed_logins_are_not_cached():
+    userinfo = respx.get("https://test.auth0.local/userinfo").mock(return_value=httpx.Response(401))
+
+    for _ in range(2):
+        with pytest.raises(HTTPException):
+            await get_authenticated_user_id("Bearer bad-token")
+
+    assert userinfo.call_count == 2
+
+
+# ---------------------- Endpoints ----------------------------------------------
+def test_index_endpoints_require_authentication(client, authenticated):
+    assert client.post("/api/repositories/ZainX38/demo/index").status_code == 401
+    assert client.get("/api/repositories/ZainX38/demo/index/status").status_code == 401
+
+
+@pytest.fixture
+def no_background_work(monkeypatch):
+    async def do_nothing(*args):
+        return None
+
+    # The background work is tested above; here only the request/response is checked
+    monkeypatch.setattr(jobs, "run_indexing_job", do_nothing)
+
+
+def test_start_and_poll_indexing_through_the_api(client, authenticated, fakes, no_background_work):
+    assert client.get("/api/repositories/ZainX38/demo/index/status", headers=authenticated).json() == {
+        "status": "not_indexed",
+    }
+
+    started = client.post("/api/repositories/ZainX38/demo/index", headers=authenticated)
+    status = client.get("/api/repositories/ZainX38/demo/index/status", headers=authenticated).json()
+
+    assert started.status_code == 202
+    assert started.json()["status"] == "queued"
+    assert (status["status"], status["commit_sha"]) == ("queued", SHA)
+    # Internal details never reach the frontend
+    assert "namespace" not in status and "user_key" not in status
+
+
+def test_users_cannot_see_each_others_indexing_status(client, authenticated, fakes, no_background_work):
+    client.post("/api/repositories/ZainX38/demo/index", headers=authenticated)
+
+    other_user_status = client.get("/api/repositories/ZainX38/demo/index/status", headers=OTHER_USER_HEADERS)
+
+    assert other_user_status.json() == {"status": "not_indexed"}
 
 
 async def test_old_commits_are_cleaned_up_before_the_job_says_ready(fakes, index_store, monkeypatch):
