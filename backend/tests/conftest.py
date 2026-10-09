@@ -49,9 +49,34 @@ def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket.socket, "connect", guarded_connect)
 
 
+# The Auth0 user ID cache would otherwise carry results from one test into the next
+@pytest.fixture(autouse=True)
+def clear_user_id_cache():
+    from app.auth import auth0
+
+    auth0._user_id_cache.clear()
+    yield
+    auth0._user_id_cache.clear()
+
+
+# Every test gets its own empty SQLite store, so tests never touch backend/data/
+@pytest.fixture(autouse=True)
+def index_store(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    from app.indexing import store
+
+    test_store = store.IndexStore(tmp_path / "index.sqlite")
+    monkeypatch.setattr(store, "_store", test_store)
+    return test_store
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+# A second logged-in user, to check that users can't see each other's data
+OTHER_USER_HEADERS = {"Authorization": "Bearer other-session"}
+SESSIONS = {"Bearer test-session": TEST_USER_ID, "Bearer other-session": "github|999999"}
 
 
 # Replaces the Auth0 -> GitHub token flow so endpoints can be tested on their own.
@@ -59,18 +84,19 @@ def client() -> TestClient:
 @pytest.fixture
 def authenticated(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     async def fake_user_id(authorization: str | None) -> str:
-        if authorization != "Bearer test-session":
+        if authorization not in SESSIONS:
             from fastapi import HTTPException
 
             raise HTTPException(status_code=401, detail="Authentication required")
-        return TEST_USER_ID
+        return SESSIONS[authorization]
 
     async def fake_github_token(user_id: str) -> str:
         return TEST_GITHUB_TOKEN
 
-    from app.routers import repositories
+    from app.routers import indexing, repositories
 
-    monkeypatch.setattr(repositories, "get_authenticated_user_id", fake_user_id)
-    monkeypatch.setattr(repositories, "get_github_token", fake_github_token)
+    for router_module in (repositories, indexing):
+        monkeypatch.setattr(router_module, "get_authenticated_user_id", fake_user_id)
+        monkeypatch.setattr(router_module, "get_github_token", fake_github_token)
 
     return {"Authorization": "Bearer test-session"}
