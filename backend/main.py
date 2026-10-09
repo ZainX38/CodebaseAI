@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,10 +9,19 @@ from app.config import (
     ALLOWED_ORIGINS,
     APP_TITLE,
 )
-from app.routers import repositories
+from app.indexing.store import get_store
+from app.routers import indexing, repositories
 
 
-app = FastAPI(title=APP_TITLE)
+# Runs once when the server starts. Indexing jobs live inside this process, so any
+# job that was still running when the server stopped can never finish
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    get_store().fail_interrupted_jobs()
+    yield
+
+
+app = FastAPI(title=APP_TITLE, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,3 +33,4 @@ app.add_middleware(
 
 # Each feature lives in its own router module and is registered here
 app.include_router(repositories.router)
+app.include_router(indexing.router)

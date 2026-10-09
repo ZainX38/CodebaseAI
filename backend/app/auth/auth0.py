@@ -1,4 +1,5 @@
 import asyncio
+from hashlib import sha256
 import time
 
 from fastapi import HTTPException
@@ -16,6 +17,14 @@ _management_token_lock = asyncio.Lock()
 # Refresh the token this many seconds before it actually expires
 TOKEN_EXPIRY_MARGIN_SECONDS = 60
 
+# ---------------- User ID cache ----------------
+# Auth0 rate limits /userinfo per user, and the frontend polls the indexing status
+# every few seconds, so the user ID behind an access token is reused for a short time.
+# The key is a hash of the token, so the token itself is never kept in memory here
+USER_ID_CACHE_SECONDS = 300
+USER_ID_CACHE_MAX_ENTRIES = 1000
+_user_id_cache: dict[str, tuple[str, float]] = {}
+
 
 # It gets authorization header as a parameter
 # Uses this header to return the authenticated user's Auth0 ID (which was previously hardcoded)
@@ -26,6 +35,12 @@ async def get_authenticated_user_id(authorization: str | None) -> str:
 
     # Removes Bearer and whitespaces from the start and end of the authorization header
     access_token = authorization.removeprefix("Bearer ").strip()
+
+    # Fast path: this token was checked recently
+    cache_key = sha256(access_token.encode()).hexdigest()
+    cached = _user_id_cache.get(cache_key)
+    if cached and time.monotonic() < cached[1]:
+        return cached[0]
 
     # Get user information from Auth0 using access token
     async with httpx.AsyncClient() as client:
@@ -44,6 +59,15 @@ async def get_authenticated_user_id(authorization: str | None) -> str:
     # Reject response if Auth0 didn't provide a "sub" value
     if not user_id:
         raise HTTPException(status_code=404, detail="Unable to identify user")
+
+    # Only successful lookups are cached. Expired entries are cleared when the cache is full
+    if len(_user_id_cache) >= USER_ID_CACHE_MAX_ENTRIES:
+        current_time = time.monotonic()
+        for key in [key for key, (_, expires_at) in _user_id_cache.items() if expires_at <= current_time]:
+            del _user_id_cache[key]
+        if len(_user_id_cache) >= USER_ID_CACHE_MAX_ENTRIES:
+            _user_id_cache.clear()
+    _user_id_cache[cache_key] = (user_id, time.monotonic() + USER_ID_CACHE_SECONDS)
 
     return user_id
 
