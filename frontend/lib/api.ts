@@ -17,6 +17,21 @@ export type Repository = {
     owner: string;
 }
 
+// queued --> downloading --> chunking --> embedding --> uploading --> ready (or failed)
+export type IndexState =
+    | "not_indexed" | "queued" | "downloading" | "chunking" | "embedding" | "uploading" | "ready" | "failed";
+
+export type IndexStatus = {
+    status: IndexState;
+    progress?: number;
+    total?: number;
+    commit_sha?: string;
+    // The newest commit that finished indexing; questions use it even if a newer job failed
+    ready_commit_sha?: string;
+    error?: string | null;
+    updated_at?: string;
+}
+
 // path is given a default value of ""
 function getRepositoryContentsUrl(owner: string, repoName: string, path: string = ""): string {
     // E.g. path = "src/components/Button.tsx"
@@ -85,4 +100,21 @@ export async function getFileContent(
     // To differentiate between folder and files, types and path is used. URL does not decide this
     const response = await fetch(getRepositoryContentsUrl(owner, repoName, path));
     return getResponseData<RepositoryFile>(response);
+}
+
+function getIndexUrl(owner: string, repoName: string): string {
+    return `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/index`;
+}
+
+// GET --> route.ts --> FastAPI /index/status
+export async function getIndexStatus(owner: string, repoName: string): Promise<IndexStatus> {
+    const response = await fetch(getIndexUrl(owner, repoName), {cache: "no-store"});
+    return getResponseData<IndexStatus>(response);
+}
+
+// POST starts indexing. It returns straight away with the first status ("queued"),
+// and the actual work continues on the backend
+export async function startIndexing(owner: string, repoName: string): Promise<IndexStatus> {
+    const response = await fetch(getIndexUrl(owner, repoName), {method: "POST"});
+    return getResponseData<IndexStatus>(response);
 }

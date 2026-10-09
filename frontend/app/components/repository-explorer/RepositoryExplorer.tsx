@@ -17,6 +17,7 @@ import {
 } from "@/lib/api";
 
 import FileViewer from "./components/FileViewer";
+import IndexStatusPanel from "./components/IndexStatusPanel";
 import RepositoryTree from "./components/RepositoryTree";
 import type { RepositoryExplorerProps } from "./types/repositoryExplorer";
 
@@ -116,22 +117,26 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
                         </div>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3">
-                        <span className="flex size-8 items-center justify-center rounded-full bg-sky-500 text-slate-950">
-                            <svg
-                                aria-hidden="true"
-                                className="size-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                            >
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75a17.933 17.933 0 0 1-7.5-1.632Z" />
-                            </svg>
-                        </span>
-                        <div>
-                            <p className="text-xs font-medium text-slate-400">Owner</p>
-                            <p className="text-sm font-semibold text-slate-100">{owner}</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        {/* key resets the panel's state when another repository is opened */}
+                        <IndexStatusPanel key={`${owner}/${repoName}`} owner={owner} repoName={repoName} />
+                        <div className="flex shrink-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3">
+                            <span className="flex size-8 items-center justify-center rounded-full bg-sky-500 text-slate-950">
+                                <svg
+                                    aria-hidden="true"
+                                    className="size-4"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth="1.5"
+                                >
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75a17.933 17.933 0 0 1-7.5-1.632Z" />
+                                </svg>
+                            </span>
+                            <div>
+                                <p className="text-xs font-medium text-slate-400">Owner</p>
+                                <p className="text-sm font-semibold text-slate-100">{owner}</p>
+                            </div>
                         </div>
                     </div>
                 </header>
