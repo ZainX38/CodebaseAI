@@ -21,6 +21,11 @@ NAMED_WITH_OWNER = 30  # "Session.send", "auth._basic_auth_str"
 NAMED_DIRECTLY = 25  # "should_strip_auth"
 OWNER_AND_METHOD_WORDS = 20  # "HTTPDigestAuth ... handle a 401" --> HTTPDigestAuth.handle_401
 CLASS_NAMED = 15  # "HTTPAdapter" --> its class header
+CALLED_BY_MATCH = 10  # a helper called by a function named in the question
+
+# A self.method() call in a class with hundreds of subclasses could match hundreds of
+# overrides; only the closest few are kept
+MAX_SELF_CALL_TARGETS = 3
 
 SymbolKey = tuple[str, str]  # (qualified symbol, path), e.g. ("Session.send", "src/requests/sessions.py")
 
@@ -58,6 +63,7 @@ class SymbolTable:
     parents: dict[SymbolKey, list[SymbolKey]] = field(default_factory=dict)  # class --> its base classes, in order
     children: dict[SymbolKey, list[SymbolKey]] = field(default_factory=dict)  # class --> classes inheriting it
     stubs: set[SymbolKey] = field(default_factory=set)  # methods whose body is only ... or pass
+    imports: dict[str, dict[str, tuple[str, str]]] = field(default_factory=dict)  # path --> alias --> (path, name)
 
     @classmethod
     def build(cls, chunks: list[Chunk], files: dict[str, str]) -> "SymbolTable":
@@ -76,8 +82,12 @@ class SymbolTable:
                 owner = (symbol.rsplit(".", 1)[0], path)
                 table.methods.setdefault(owner, {})[last_part(symbol)] = (symbol, path)
 
-        for path in files:
-            tree = parse_python(files[path]) if path.endswith(".py") else None
+        module_index = get_module_index(files)
+        trees = {path: parse_python(files[path]) for path in files if path.endswith(".py")}
+        for path, tree in trees.items():
+            if tree is not None:
+                table.imports[path] = resolve_imports(path, tree, files, module_index)
+        for path, tree in trees.items():
             if tree is not None:
                 table._read_classes(path, tree)
         return table
@@ -100,12 +110,16 @@ class SymbolTable:
         visit(tree.body, "")
 
     # A base class name is looked up like Python would: a class in the same file first,
-    # then a class with that name anywhere (if only one exists)
+    # then one imported into this file, then a class with that name anywhere (if only one exists)
     def resolve_class(self, name: str, path: str) -> SymbolKey | None:
         candidates = self.classes_by_name.get(name, [])
         same_file = [key for key in candidates if key[1] == path]
         if same_file:
             return same_file[0]
+        if name in self.imports.get(path, {}):
+            imported_path, imported_name = self.imports[path][name]
+            if (imported_name, imported_path) in self.kinds:
+                return (imported_name, imported_path)
         return candidates[0] if len(candidates) == 1 else None
 
     # Breadth-first, closest first: the class itself, its parents, their parents...
@@ -193,7 +207,69 @@ def find_named_symbols(question: str, table: SymbolTable, files: dict[str, str])
                     if shared_words:
                         add(method, OWNER_AND_METHOD_WORDS + len(shared_words), "class named and method name matches the question")
 
+    # Helpers called directly by a named function, e.g. HTTPDigestAuth.handle_401 calls
+    # self.build_digest_header, and rebuild_auth calls get_netrc_auth from utils.py
+    for match in [match for match in matches.values() if match.score >= OWNER_AND_METHOD_WORDS]:
+        for callee in resolve_callees(table, files, match):
+            if callee not in matches:
+                shared_words = len(set(tokenize(last_part(callee[0]))) & question_words)
+                add(callee, CALLED_BY_MATCH + shared_words, f"called by {match.symbol}")
+
     return sorted(matches.values(), key=lambda match: (-match.score, match.path, match.symbol))
+
+
+# ---------------------- Resolves what a named function calls -----------------
+def resolve_callees(table: SymbolTable, files: dict[str, str], match: SymbolMatch) -> list[SymbolKey]:
+    if not match.path.endswith(".py") or match.path not in files:
+        return []
+
+    owner = (match.symbol.rsplit(".", 1)[0], match.path) if "." in match.symbol else None
+    resolved = []
+    for callee_name, on_self in get_direct_callees(files[match.path], match.symbol):
+        if on_self and owner in table.kinds:
+            # The class's own ancestry first (normal method lookup). A mixin's self.send()
+            # is often implemented by the class using the mixin, so subclasses come next
+            targets = [table.find_method(owner, callee_name)]
+            targets += [table.methods.get(child, {}).get(callee_name) for child in table.descendants(owner)[1:]]
+            targets = [target for target in dict.fromkeys(targets) if target and target not in table.stubs]
+            resolved.extend(targets[:MAX_SELF_CALL_TARGETS])
+        elif (callee_name, match.path) in table.kinds:
+            resolved.append((callee_name, match.path))
+        elif callee_name in table.imports.get(match.path, {}):
+            # A helper imported from another module, e.g. "from .utils import get_netrc_auth"
+            imported_path, imported_name = table.imports[match.path][callee_name]
+            if (imported_name, imported_path) in table.kinds:
+                resolved.append((imported_name, imported_path))
+
+    return list(dict.fromkeys(resolved))
+
+
+# Returns (name, called on self/cls) for every call directly inside a function.
+# Nested functions and classes are skipped: their calls belong to them, not to this function
+def get_direct_callees(content: str, symbol: str) -> list[tuple[str, bool]]:
+    node = find_definition(parse_python(content), symbol.split("."))
+    if node is None:
+        return []
+
+    callees = []
+    to_visit = deque(ast.iter_child_nodes(node))
+    while to_visit:
+        child = to_visit.popleft()
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
+            continue
+        if isinstance(child, ast.Call):
+            if isinstance(child.func, ast.Name):
+                callees.append((child.func.id, False))
+            elif (
+                isinstance(child.func, ast.Attribute)
+                and isinstance(child.func.value, ast.Name)
+                and child.func.value.id in ("self", "cls")
+            ):
+                callees.append((child.func.attr, True))
+        to_visit.extend(ast.iter_child_nodes(child))
+
+    # dict.fromkeys() removes duplicates but keeps the order of the calls
+    return list(dict.fromkeys(callees))
 
 
 # ---------------------- AST helpers ------------------------------------------
@@ -244,3 +320,64 @@ def definitions(body: list[ast.stmt]):
             blocks += [handler.body for handler in getattr(node, "handlers", [])]
             for block in blocks:
                 yield from definitions(block)
+
+
+# ---------------------- Import resolution ------------------------------------
+# Every Python file under every dotted name it could be imported as:
+# "src/requests/utils.py" --> "utils", "requests.utils", "src.requests.utils".
+# Built once, so an import is a dictionary lookup instead of a scan over every file,
+# and only whole module names match ("requests.utils" never matches "myrequests/utils.py")
+def get_module_index(files: dict[str, str]) -> dict[str, list[str]]:
+    index: dict[str, list[str]] = {}
+    for path in files:
+        if not path.endswith(".py"):
+            continue
+        parts = list(PurePosixPath(path).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        for start in range(len(parts)):
+            index.setdefault(".".join(parts[start:]), []).append(path)
+    return index
+
+
+# "from .utils import get_netrc_auth as netrc" in src/requests/sessions.py
+# --> {"netrc": ("src/requests/utils.py", "get_netrc_auth")}
+def resolve_imports(
+    path: str, tree: ast.Module, files: dict[str, str], module_index: dict[str, list[str]]
+) -> dict[str, tuple[str, str]]:
+    imports = {}
+    package = PurePosixPath(path).parent
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom) or not node.module:
+            continue
+        if node.level:
+            base = package
+            for _ in range(node.level - 1):
+                base = base.parent
+            module_file = base / node.module.replace(".", "/")
+            candidates = [str(module_file) + ".py", str(module_file / "__init__.py")]
+            module_path = next((candidate for candidate in candidates if candidate in files), None)
+        else:
+            # If several files could be this module, the one closest to the importing file
+            # wins (most shared folders), then the shortest path
+            matching = module_index.get(node.module, [])
+            module_path = min(
+                matching,
+                key=lambda candidate: (-len(shared_prefix(candidate, path)), len(candidate)),
+                default=None,
+            )
+
+        if module_path:
+            for alias in node.names:
+                imports[alias.asname or alias.name] = (module_path, alias.name)
+    return imports
+
+
+def shared_prefix(first: str, second: str) -> list[str]:
+    shared = []
+    for a, b in zip(PurePosixPath(first).parts, PurePosixPath(second).parts):
+        if a != b:
+            break
+        shared.append(a)
+    return shared
