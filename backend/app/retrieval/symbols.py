@@ -87,12 +87,17 @@ class SymbolTable:
         for path, tree in trees.items():
             if tree is not None:
                 table.imports[path] = resolve_imports(path, tree, files, module_index)
+        implemented: set[SymbolKey] = set()
         for path, tree in trees.items():
             if tree is not None:
-                table._read_classes(path, tree)
+                table._read_classes(path, tree, implemented)
+        # @overload stubs share their name with the real method, so a name only counts as
+        # a stub if it has no real implementation at all (e.g. Response.iter_content has
+        # two "...: ..." overloads followed by the real definition)
+        table.stubs -= implemented
         return table
 
-    def _read_classes(self, path: str, tree: ast.Module) -> None:
+    def _read_classes(self, path: str, tree: ast.Module, implemented: set[SymbolKey]) -> None:
         def visit(body: list[ast.stmt], prefix: str) -> None:
             for node in definitions(body):
                 key = (prefix + node.name, path)
@@ -106,6 +111,8 @@ class SymbolTable:
                     visit(node.body, key[0] + ".")
                 elif is_stub(node):
                     self.stubs.add(key)
+                else:
+                    implemented.add(key)
 
         visit(tree.body, "")
 
@@ -295,6 +302,21 @@ def is_stub(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         or (isinstance(statement, ast.Raise) and "NotImplementedError" in ast.unparse(statement))
         for statement in body
     )
+
+
+# Every definition with this qualified name, in file order. A name can be defined more
+# than once: @overload stubs before the real method, or a property getter and setter
+def find_definitions(tree: ast.Module | None, parts: list[str]) -> list[ast.AST]:
+    if tree is None or not parts:
+        return []
+
+    body = tree.body
+    for part in parts[:-1]:
+        parent = next((child for child in definitions(body) if child.name == part), None)
+        if parent is None:
+            return []
+        body = parent.body
+    return [child for child in definitions(body) if child.name == parts[-1]]
 
 
 def find_definition(tree: ast.Module | None, parts: list[str]) -> ast.AST | None:

@@ -228,3 +228,20 @@ def test_parsing_is_safe_from_several_threads():
         trees = list(pool.map(parse_python, sources * 4))
 
     assert all(tree is not None for tree in trees)
+
+
+def test_overload_stubs_do_not_hide_the_real_method():
+    repository = build({
+        "src/models.py": '''from typing import overload
+
+class Response:
+    @overload
+    def iter_content(self, size: int) -> bytes: ...
+    @overload
+    def iter_content(self, size: None) -> str: ...
+    def iter_content(self, size=None):
+        return self.raw.read(size)
+''',
+    })
+
+    assert named("How does Response.iter_content work?", repository) == [("Response.iter_content", "src/models.py", 30)]
