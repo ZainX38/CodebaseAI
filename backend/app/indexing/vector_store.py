@@ -72,7 +72,7 @@ class VectorStore:
         self.index = index
 
     @classmethod
-    def connect(cls, embedding_model: str, dimensions: int) -> "VectorStore":
+    def connect(cls, embedding_model: str, dimensions: int, create: bool = True) -> "VectorStore":
         if not config.PINECONE_API_KEY:
             raise VectorStoreError("PINECONE_API_KEY is not set")
 
@@ -85,6 +85,8 @@ class VectorStore:
         # The index is created the first time a model is used, and reused afterwards.
         # create_index() waits until the index is ready; without a timeout it could wait forever
         if not client.has_index(index_name):
+            if not create:
+                raise VectorStoreError("No index exists for the configured embedding model; index the repository first")
             try:
                 client.create_index(
                     name=index_name,
@@ -145,3 +147,22 @@ class VectorStore:
         for namespace in to_delete:
             self.delete_namespace(namespace)
         return to_delete
+
+
+# ---------------------- Connections used for questions -----------------------
+# The index name depends on the vector size, which is only known once the question
+# has been embedded, so the connection is made on the first query. Connections are
+# reused between questions, because connect() makes a request to Pinecone
+_query_connections: dict[tuple[str, int], VectorStore] = {}
+
+
+class QueryVectorStore:
+    def __init__(self, embedding_model: str):
+        self.embedding_model = embedding_model
+
+    def query(self, namespace: str, vector: list[float], top_k: int) -> list[tuple[str, float]]:
+        key = (self.embedding_model, len(vector))
+        if key not in _query_connections:
+            # Questions never create an index; only indexing does
+            _query_connections[key] = VectorStore.connect(self.embedding_model, len(vector), create=False)
+        return _query_connections[key].query(namespace, vector, top_k)

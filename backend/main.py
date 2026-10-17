@@ -10,7 +10,7 @@ from app.config import (
     APP_TITLE,
 )
 from app.indexing.store import get_store
-from app.routers import indexing, repositories
+from app.routers import chat, indexing, repositories
 
 
 # Runs once when the server starts. Indexing jobs live inside this process, so any
@@ -34,3 +34,4 @@ app.add_middleware(
 # Each feature lives in its own router module and is registered here
 app.include_router(repositories.router)
 app.include_router(indexing.router)
+app.include_router(chat.router)

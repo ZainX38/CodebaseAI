@@ -93,9 +93,9 @@ def authenticated(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     async def fake_github_token(user_id: str) -> str:
         return TEST_GITHUB_TOKEN
 
-    from app.routers import indexing, repositories
+    from app.routers import chat, indexing, repositories
 
-    for router_module in (repositories, indexing):
+    for router_module in (repositories, indexing, chat):
         monkeypatch.setattr(router_module, "get_authenticated_user_id", fake_user_id)
         monkeypatch.setattr(router_module, "get_github_token", fake_github_token)
 
