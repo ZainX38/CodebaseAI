@@ -20,6 +20,12 @@ FINAL_RESULTS = 6
 # Keeps one request from making BM25 and the symbol lookup do a huge amount of work
 MAX_QUESTION_CHARS = 1000
 
+
+# A problem with the question itself (too long), whose message is safe to show the user.
+# A dedicated type, so an unexpected internal ValueError is never shown by mistake
+class QuestionError(ValueError):
+    pass
+
 RetrievalMode = Literal["vector", "hybrid"]
 
 
@@ -124,7 +130,7 @@ async def retrieve(
     top_k: int = FINAL_RESULTS,
 ) -> RetrievalResult:
     if len(question) > MAX_QUESTION_CHARS:
-        raise ValueError(f"Questions can be at most {MAX_QUESTION_CHARS} characters")
+        raise QuestionError(f"Questions can be at most {MAX_QUESTION_CHARS} characters")
 
     [query_vector] = await provider.embed([question])
     vector_hits = await asyncio.to_thread(vector_store.query, repository.namespace, query_vector, VECTOR_CANDIDATES)

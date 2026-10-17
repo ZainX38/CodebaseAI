@@ -1,12 +1,13 @@
 import ast
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+import secrets
 from typing import Literal
 
 from app import config
 from app.indexing.chunking import Chunk, split_lines
 from app.retrieval.bm25 import tokenize
-from app.retrieval.retriever import RepositoryIndex
+from app.retrieval.retriever import QuestionError, RepositoryIndex
 from app.retrieval.symbols import find_definitions, parse_python
 
 
@@ -19,6 +20,10 @@ TEMPLATE_RESERVE_TOKENS = 512
 MIN_CONTEXT_TOKENS = 256
 # A cut-down excerpt smaller than this is more confusing than helpful
 MIN_EXCERPT_TOKENS = 120
+
+# 4 random bytes = 8 hex characters, e.g. "9f3a01c2"
+FENCE_BYTES = 4
+FENCE_PLACEHOLDER = "0" * (FENCE_BYTES * 2)
 
 
 # ---------------------- Counting tokens ---------------------------------------
@@ -38,7 +43,7 @@ def get_context_budget(
 ) -> int:
     budget = context_tokens - max_output_tokens - count_tokens(system_prompt) - count_tokens(question) - TEMPLATE_RESERVE_TOKENS
     if budget < MIN_CONTEXT_TOKENS:
-        raise ValueError("The question is too long to leave room for any code; please shorten it")
+        raise QuestionError("The question is too long to leave room for any code; please shorten it")
     return budget
 
 
@@ -56,16 +61,31 @@ class Excerpt:
     scope: str  # "complete body", "partial body; other lines omitted", "excerpt", "excerpt cut to fit"
     commit_sha: str
 
-    def header(self) -> str:
+    # The fence is a random code made for each question. A file can contain a line that
+    # looks like "[source-1] src/auth.py:1-2", but it can't guess the fence, so the model
+    # can always tell where an excerpt really starts and ends
+    def header(self, fence: str = FENCE_PLACEHOLDER) -> str:
         label = f" ({self.symbol}; {self.scope})" if self.symbol else f" ({self.scope})"
-        return f"[{self.id}] {self.path}:{self.start_line}-{self.end_line}{label}\n"
+        return f"[{self.id} | {fence}] {self.path}:{self.start_line}-{self.end_line}{label}\n"
 
+    def footer(self, fence: str = FENCE_PLACEHOLDER) -> str:
+        return f"[end of {self.id} | {fence}]"
+
+    def render(self, fence: str = FENCE_PLACEHOLDER) -> str:
+        newline = "" if self.text.endswith("\n") or not self.text else "\n"
+        return self.header(fence) + self.text + newline + self.footer(fence)
+
+    # The placeholder has the same length as a real fence, so the cost is exact
     def cost(self) -> int:
-        return count_tokens(self.header() + self.text + "\n\n")
+        return count_tokens(self.render() + "\n\n")
 
 
-def format_context(excerpts: list[Excerpt]) -> str:
-    return "\n\n".join(excerpt.header() + excerpt.text for excerpt in excerpts)
+def new_fence() -> str:
+    return secrets.token_hex(FENCE_BYTES)
+
+
+def format_context(excerpts: list[Excerpt], fence: str = FENCE_PLACEHOLDER) -> str:
+    return "\n\n".join(excerpt.render(fence) for excerpt in excerpts)
 
 
 # ---------------------- Builds the context ------------------------------------
@@ -261,7 +281,10 @@ class ContextBuilder:
             return running[last - start + 1] - running[first - start]
 
         # The header is largest with the biggest line numbers, so this is an upper bound
-        header_cost = count_tokens(f"[source-{len(self.excerpts) + 1}] {chunk.path}:{end}-{end} ({chunk.symbol}; {scope})\n") + 2
+        # Header, footer and separator, with the biggest line numbers (an upper bound), and
+        # +1 for the newline added when the last line of a file has none
+        empty = Excerpt(f"source-{len(self.excerpts) + 1}", chunk.path, end, end, "", chunk.symbol, scope, chunk.commit_sha)
+        header_cost = empty.cost() + 1
         # For each question word, the lines it appears on (sorted)
         # A line is only tokenized if a question word appears in it as plain text, because
         # tokenizing every line of a huge function is the slowest part
