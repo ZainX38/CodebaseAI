@@ -27,6 +27,9 @@ def normalise_citation_id(raw: Any) -> str | None:
         return None
 
     cleaned = raw.strip(WRAPPING_CHARACTERS).lower()
+    # Models sometimes copy the whole header, e.g. "source-1 | 9f3a01c2" or "source-1 | code".
+    # The part after "|" is the fence, which only marks where an excerpt starts and ends
+    cleaned = cleaned.split("|", 1)[0].strip(WRAPPING_CHARACTERS)
     match = SOURCE_ID.fullmatch(cleaned)
     return f"source-{int(match.group(1))}" if match else None
 

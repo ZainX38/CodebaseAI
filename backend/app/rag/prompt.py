@@ -15,7 +15,7 @@ SYSTEM_PROMPT = (
     "If the excerpts do not establish the answer, say that you cannot determine it from the code provided "
     "and return an empty citations list. "
     'Reply with JSON: "answer" is a concise explanation, and "citations" lists the IDs of the excerpts '
-    'you used, written exactly as shown, for example "source-1".'
+    'you used. Write only the ID, for example "source-1", without brackets or the code.'
 )
 
 # Structured output: the model has to return exactly this shape (Ollama "format" /

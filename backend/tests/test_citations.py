@@ -24,6 +24,9 @@ EXCERPTS = [excerpt(1), excerpt(2), excerpt(3)]
         ("source_2", "source-2"),
         ("source-01", "source-1"),
         ("[[source-1]]", "source-1"),
+        # deepseek-coder-v2 copied the header format from the prompt on a dev question
+        ("source-1 | code", "source-1"),
+        ("[source-2 | 9f3a01c2]", "source-2"),
     ],
 )
 def test_harmless_formatting_is_removed(raw, expected):
