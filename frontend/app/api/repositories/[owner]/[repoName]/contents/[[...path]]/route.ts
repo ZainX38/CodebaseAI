@@ -27,8 +27,12 @@ export async function GET(
         const encodedPath = path.map(encodeURIComponent).join("/");
         const backendPath = `/api/repositories/${encodeURIComponent(owner)}/${encodeURIComponent(repoName)}/contents`;
         // URL is formed with BACKEND URL + BACKEND PATH (FastAPI defined path) + REPO PATH (optional as it culd be the root)
-        const backendUrl = encodedPath ? `${BACKEND_URL}${backendPath}/${encodedPath}` : `${BACKEND_URL}${backendPath}`;
-        
+        const backendUrl = new URL(encodedPath ? `${BACKEND_URL}${backendPath}/${encodedPath}` : `${BACKEND_URL}${backendPath}`);
+
+        // Optional commit SHA: files opened from a citation are read at the indexed commit
+        const ref = new URL(request.url).searchParams.get("ref");
+        if (ref) backendUrl.searchParams.set("ref", ref);
+
         
         // Sends the following data to FastAPI backend: owner, repoName, path and Auth0 Access Token
         const response = await fetch(backendUrl, {

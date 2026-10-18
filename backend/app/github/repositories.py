@@ -59,14 +59,18 @@ async def get_repository_contents(
     owner: str,
     repo_name: str,
     path: str,
+    ref: str | None = None,
 ) -> list[dict[str, Any]] | dict[str, Any]:
     github_api_url = get_github_contents_url(owner, repo_name, path)
 
-    # Request the specified file or directory using the github access token
+    # Request the specified file or directory using the github access token.
+    # ref is a commit SHA: a file opened from a citation is shown at the indexed
+    # commit, so the cited line numbers still match even if the branch moved on
     async with httpx.AsyncClient() as client:
         response = await client.get(
             github_api_url,
             headers=get_github_headers(github_token),
+            params={"ref": ref} if ref else None,
         )
 
     raise_for_github_error(

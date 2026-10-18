@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 
 from app.auth.auth0 import get_authenticated_user_id
 from app.auth.github_identity import get_github_token
@@ -31,6 +31,8 @@ async def get_repository_contents(
     owner: str,
     repo_name: str,
     path: str = "",
+    # Optional: only a full commit SHA is accepted, which is all citations need
+    ref: Annotated[str | None, Query(pattern=r"^[0-9a-f]{40}$")] = None,
     authorization: Annotated[str | None, Header()] = None,
 ):
     user_id = await get_authenticated_user_id(authorization)
@@ -41,4 +43,5 @@ async def get_repository_contents(
         owner,
         repo_name,
         path,
+        ref,
     )
