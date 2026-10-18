@@ -4,6 +4,7 @@
 // 1. Load Repositories - loadRepository() fetches the root directory when explorer opens
 // 2. Expand/ Collapse Folders - toggleFolder() opens or collapses folders when needed and fetches their content. Also manages cache of files
 // 3. Select File  - selectFile() fetches the selected file and displays its content
+// 4. Open Citation - openCitation() shows a cited file at the indexed commit and highlights the lines
 
 // Lazy Loading is used as folder contents are requested only as needed
 
@@ -15,8 +16,11 @@ import {
     RepositoryEntry,        // TypeScript types describing the expected response data
     RepositoryFile,
 } from "@/lib/api";
+import type { Citation } from "@/lib/api";
 
+import ChatPanel from "../chat-panel";
 import FileViewer from "./components/FileViewer";
+import type { LineRange } from "./components/FileViewer";
 import IndexStatusPanel from "./components/IndexStatusPanel";
 import RepositoryTree from "./components/RepositoryTree";
 import type { RepositoryExplorerProps } from "./types/repositoryExplorer";
@@ -28,11 +32,15 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
     const [isFileLoading, setIsFileLoading] = useState(false);
     const [treeError, setTreeError] = useState("");
     const [fileError, setFileError] = useState("");
+    const [highlight, setHighlight] = useState<LineRange | null>(null);
     const fileCache = useRef<Record<string, RepositoryFile>>({});
     const selectedPath = useRef("");
 
     useEffect(() => {
         let isCurrentRequest = true;
+
+        // A different repository: files cached for the previous one must never be shown
+        fileCache.current = {};
 
         async function loadRepository() {
             try {
@@ -58,13 +66,16 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
         };
     }, [owner, repoName]);
 
-    async function selectFile(entry: RepositoryEntry) {
-        selectedPath.current = entry.path;
+    // Loads a file into the viewer. ref is a commit SHA when the file is opened from a
+    // citation, so the same path can be cached twice: from the branch and from the commit
+    async function loadFile(path: string, ref?: string) {
+        const cacheKey = `${ref ?? ""}:${path}`;
+        selectedPath.current = cacheKey;
         setFileError("");
 
-        // Checks if file is in cache and if it is, no HTTP request is done 
-        if (fileCache.current[entry.path]) {
-            setSelectedFile(fileCache.current[entry.path]);
+        // Checks if file is in cache and if it is, no HTTP request is done
+        if (fileCache.current[cacheKey]) {
+            setSelectedFile(fileCache.current[cacheKey]);
             setIsFileLoading(false);
             return;
         }
@@ -72,21 +83,33 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
         setSelectedFile(null);
         setIsFileLoading(true);
 
-        // This is what happens if file is in cache
+        // This is what happens if file is not in cache
         try {
             // Gets the content of the file by using HTTP request
-            const file = await getFileContent(owner, repoName, entry.path);
+            const file = await getFileContent(owner, repoName, path, ref);
             // Stores file in cache
-            fileCache.current[entry.path] = file;
+            fileCache.current[cacheKey] = file;
 
-            if (selectedPath.current === entry.path) setSelectedFile(file);
+            if (selectedPath.current === cacheKey) setSelectedFile(file);
         } catch (error) {
-            if (selectedPath.current === entry.path) {
+            if (selectedPath.current === cacheKey) {
                 setFileError(error instanceof Error ? error.message : "File could not be loaded");
             }
         } finally {
-            if (selectedPath.current === entry.path) setIsFileLoading(false);
+            if (selectedPath.current === cacheKey) setIsFileLoading(false);
         }
+    }
+
+    // Clicking a file in the tree shows the default branch, without any highlight
+    function selectFile(entry: RepositoryEntry) {
+        setHighlight(null);
+        loadFile(entry.path);
+    }
+
+    // Clicking a citation shows the file at the indexed commit and highlights the cited lines
+    function openCitation(citation: Citation) {
+        setHighlight({start: citation.start_line, end: citation.end_line});
+        loadFile(citation.path, citation.commit_sha);
     }
 
     return (
@@ -141,7 +164,8 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
                     </div>
                 </header>
 
-                <div className="grid min-h-0 flex-1 overflow-hidden rounded-b-2xl border-x border-b border-slate-300 bg-white shadow-xl shadow-slate-300/40 md:grid-cols-[320px_minmax(0,1fr)]">
+                {/* Tree | file viewer | chat on wide screens; the chat moves below on smaller ones */}
+                <div className="grid min-h-0 flex-1 overflow-hidden rounded-b-2xl border-x border-b border-slate-300 bg-white shadow-xl shadow-slate-300/40 md:grid-cols-[280px_minmax(0,1fr)] xl:h-[calc(100vh-15rem)] xl:min-h-[36rem] xl:grid-cols-[280px_minmax(0,1fr)_400px]">
                     <RepositoryTree
                         entries={entries}
                         owner={owner}
@@ -154,7 +178,11 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
                         selectedFile={selectedFile}
                         isLoading={isFileLoading}
                         error={fileError}
+                        highlight={highlight}
                     />
+                    <div className="h-[70vh] min-h-96 md:col-span-2 xl:col-span-1 xl:h-full xl:min-h-0">
+                        <ChatPanel key={`${owner}/${repoName}`} owner={owner} repoName={repoName} onOpenCitation={openCitation} />
+                    </div>
                 </div>
             </div>
         </main>
