@@ -75,3 +75,10 @@ def test_contents_only_accept_a_full_commit_sha_as_ref(client, authenticated):
     for ref in ["main", "abc123", "../../etc", "A" * 40]:
         response = client.get(f"/api/repositories/ZainX38/demo/contents/src/app.py?ref={ref}", headers=authenticated)
         assert response.status_code == 422
+
+
+def test_github_headers_leave_out_authorization_without_a_token():
+    from app.github.client import get_github_headers
+
+    assert get_github_headers("gho_x")["Authorization"] == "Bearer gho_x"
+    assert "Authorization" not in get_github_headers("")

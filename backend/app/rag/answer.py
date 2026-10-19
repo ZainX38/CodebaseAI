@@ -114,6 +114,9 @@ class AnswerResult:
     rejected_citations: list[Any] = field(default_factory=list)
     normalised_citations: list[str] = field(default_factory=list)
     error: str | None = None
+    # "model_output" (invalid JSON, wrong shape, empty), "infrastructure" (Ollama, Pinecone)
+    # or "question" (e.g. too long). The evaluation only records model_output failures
+    error_kind: str | None = None
     seconds: dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -173,9 +176,12 @@ async def generate_answer(
 
         yield AnswerEvent("status", "validating")
         parse_answer(result)
-    except (ProviderError, QuestionError, VectorStoreError) as error:
+    except QuestionError as error:
         # These messages are written to be shown to the user
-        result.error = str(error)
+        result.error, result.error_kind = str(error), "question"
+    except (ProviderError, VectorStoreError) as error:
+        # Ollama, OpenAI or Pinecone failed: a problem with the service, not with the answer
+        result.error, result.error_kind = str(error), "infrastructure"
     finally:
         result.seconds["total"] = round(time.perf_counter() - started, 3)
 
@@ -185,18 +191,20 @@ async def generate_answer(
 # The JSON schema makes the shape very likely, but a model can still stop half way
 # (output limit) or return something else, so the result is checked rather than trusted
 def parse_answer(result: AnswerResult) -> None:
+    # Everything here is a problem with what the model wrote
     try:
         parsed = json.loads(result.raw_response)
     except json.JSONDecodeError:
         result.error = "The model returned an answer that isn't valid JSON (it may have hit the output limit)"
+        result.error_kind = "model_output"
         return
 
     if not isinstance(parsed, dict) or not isinstance(parsed.get("answer"), str):
-        result.error = "The model's answer doesn't have the expected shape"
+        result.error, result.error_kind = "The model's answer doesn't have the expected shape", "model_output"
         return
 
     if not parsed["answer"].strip():
-        result.error = "The model returned an empty answer"
+        result.error, result.error_kind = "The model returned an empty answer", "model_output"
         return
 
     # Kept exactly as streamed (not stripped), so the final answer matches the tokens

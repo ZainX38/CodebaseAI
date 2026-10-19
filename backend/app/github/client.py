@@ -3,12 +3,14 @@ import httpx
 
 
 # Every GitHub API call is authenticated with the user's token and asks for the
-# recommended media type so the response shape stays stable
+# recommended media type so the response shape stays stable.
+# The evaluation downloads a public repository without any token, so then the
+# Authorization header is left out instead of sending an empty "Bearer "
 def get_github_headers(github_token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {github_token}",
-        "Accept": "application/vnd.github+json",
-    }
+    headers = {"Accept": "application/vnd.github+json"}
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    return headers
 
 
 # It preserves all client error codes (4xx) but all server errors (5xx) get mapped to 502
