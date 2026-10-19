@@ -1,0 +1,138 @@
+{
+  "repository": "psf/requests",
+  "commit_sha": "611c6162cbc4ac2020a2f91c7cfa4f3abf9bbb60",
+  "notes": [
+    "The 18 questions are the same as the portfolio prototype's evaluation (codebase-demo/backend/evaluations/deepseek-cases.json).",
+    "target_regions are the source regions from the prototype's improvements/source-targets.json, chosen there before any results were reviewed. They measure whether the evidence was shown to the model, not whether the answer is correct.",
+    "reference answers were drafted by Claude from the pinned source for RAGAS context precision and for the manual review. They must be checked by a person before the scores are trusted.",
+    "Questions 3, 17 and 18 cannot be answered from the code; the expected behaviour is to say so and cite nothing."
+  ],
+  "cases": [
+    {
+      "id": 1,
+      "question": "What license is assigned to __license__ in src/requests/__version__.py?",
+      "answerable": true,
+      "reference": "__license__ is set to \"Apache-2.0\" in src/requests/__version__.py.",
+      "target_regions": [["src/requests/__version__.py", 12, 12]]
+    },
+    {
+      "id": 2,
+      "question": "How does HTTPBasicAuth.__call__ in src/requests/auth.py set the Authorization header?",
+      "answerable": true,
+      "reference": "HTTPBasicAuth.__call__ sets r.headers[\"Authorization\"] to _basic_auth_str(self.username, self.password) on the prepared request and returns the request.",
+      "target_regions": [["src/requests/auth.py", 111, 113]]
+    },
+    {
+      "id": 3,
+      "question": "What was the production database password on 1 January 2020?",
+      "answerable": false,
+      "reference": "This cannot be determined from the repository's code; the code contains no such information, so the answer should say so and cite nothing.",
+      "target_regions": []
+    },
+    {
+      "id": 4,
+      "question": "How does _basic_auth_str encode usernames and passwords in src/requests/auth.py?",
+      "answerable": true,
+      "reference": "_basic_auth_str first converts non-string usernames or passwords to str with a DeprecationWarning (support ends in 3.0.0). Text values are encoded as latin1 bytes, joined as username:password with b':', Base64-encoded with b64encode, stripped, converted to a native string and prefixed with \"Basic \".",
+      "target_regions": [["src/requests/auth.py", 65, 73]]
+    },
+    {
+      "id": 5,
+      "question": "How does HTTPDigestAuth handle a 401 challenge and resend the request?",
+      "answerable": true,
+      "reference": "HTTPDigestAuth.handle_401 returns non-4xx responses unchanged (resetting num_401_calls to 1). If a body position was recorded it seeks the body back to it. If the WWW-Authenticate header contains 'digest' and fewer than 2 401 calls were made, it increments the counter, parses the challenge into self._thread_local.chal, consumes and closes the original response, copies the request, extracts and prepares cookies, builds a new Authorization header with build_digest_header(method, url), resends it with r.connection.send, appends the original response to the new response's history and returns the new response. Otherwise it resets the counter and returns the original response.",
+      "target_regions": [["src/requests/auth.py", 293, 319]]
+    },
+    {
+      "id": 6,
+      "question": "How do requests.get, requests.api.request and Session.request work together?",
+      "answerable": true,
+      "reference": "requests.get calls request(\"get\", url, params=params, **kwargs). requests.api.request opens a sessions.Session() in a with block and returns session.request(method=method, url=url, **kwargs). Session.request builds a Request (uppercased method, data or {}, params or {}), prepares it with prepare_request, merges environment settings with merge_environment_settings, combines those with timeout and allow_redirects, sends it with self.send and returns the Response.",
+      "target_regions": [["src/requests/api.py", 70, 71], ["src/requests/api.py", 87, 87], ["src/requests/sessions.py", 622, 653]]
+    },
+    {
+      "id": 7,
+      "question": "How does Session.prepare_request merge session cookies, headers and authentication with a Request?",
+      "answerable": true,
+      "reference": "prepare_request turns request cookies into a CookieJar if needed and merges them over the session cookies into a new RequestsCookieJar. If trust_env is set and neither the request nor the session has auth, it looks up netrc auth for the URL. It then calls PreparedRequest.prepare with headers merged by merge_setting (request headers override session headers, case-insensitive, None values removed), params merged the same way, auth=merge_setting(auth, self.auth) so request auth wins over session auth, the merged cookies and merged hooks.",
+      "target_regions": [["src/requests/sessions.py", 524, 553], ["src/requests/sessions.py", 84, 105]]
+    },
+    {
+      "id": 8,
+      "question": "In Session.request, how are environment settings merged before the prepared request is sent?",
+      "answerable": true,
+      "reference": "Session.request calls merge_environment_settings(prep.url, proxies, stream, verify, cert). If trust_env is true it adds proxies from the environment (respecting no_proxy) with setdefault, and if verify is True or None it uses REQUESTS_CA_BUNDLE or CURL_CA_BUNDLE when set. Proxies, stream, verify and cert are then merged with the session's values using merge_setting, and the resulting dict is added to the send kwargs together with timeout and allow_redirects.",
+      "target_regions": [["src/requests/sessions.py", 641, 651], ["src/requests/sessions.py", 845, 868]]
+    },
+    {
+      "id": 9,
+      "question": "How does Session.send choose an adapter, dispatch response hooks, persist cookies and handle redirects?",
+      "answerable": true,
+      "reference": "Session.send fills in default stream, verify, cert and proxies, rejects unprepared Request objects, then picks the adapter with get_adapter (the first mounted prefix that matches the URL, case-insensitively). It times adapter.send, dispatches the 'response' hooks, extracts cookies from any history and from the response into the session's cookie jar, and if allow_redirects is true runs resolve_redirects and makes the last response the result with the earlier ones as history. If redirects are disabled it stores the next redirect request in r._next. Unless stream is set it reads the content before returning.",
+      "target_regions": [["src/requests/sessions.py", 777, 829]]
+    },
+    {
+      "id": 10,
+      "question": "When does SessionRedirectMixin.should_strip_auth remove Authorization on redirects? Include scheme and port exceptions.",
+      "answerable": true,
+      "reference": "It returns True (strip) whenever the hostname changes. It returns False for an http to https redirect on the same host when the old port is 80 or None and the new port is 443 or None. It also returns False when the scheme is unchanged and both ports are the scheme's default port or None. Otherwise it strips the header if the port or the scheme changed.",
+      "target_regions": [["src/requests/sessions.py", 158, 184]]
+    },
+    {
+      "id": 11,
+      "question": "How does rebuild_method change POST and HEAD requests for 301, 302 and 303 redirects?",
+      "answerable": true,
+      "reference": "For 303 See Other, any method except HEAD becomes GET. For 302 Found, any method except HEAD also becomes GET (browser behaviour). For 301 Moved Permanently, only POST becomes GET. HEAD is never changed by these rules.",
+      "target_regions": [["src/requests/sessions.py", 378, 392]]
+    },
+    {
+      "id": 12,
+      "question": "How does resolve_redirects handle request bodies, cookies and rewinding for 307 and 308 responses?",
+      "answerable": true,
+      "reference": "For status codes other than 307 and 308, resolve_redirects removes Content-Length, Content-Type and Transfer-Encoding and sets the body to None; for 307 and 308 the body and those headers are kept. For every redirect it removes the Cookie header, extracts cookies from the response into the prepared request's jar, merges the session cookies and prepares cookies again. It then rebuilds proxies and auth. If _body_position is set (including the sentinel left by a failed tell()) and Content-Length or Transfer-Encoding is present, it calls rewind_body before sending, which seeks the body back or raises UnrewindableBodyError when it can't.",
+      "target_regions": [["src/requests/sessions.py", 249, 284]]
+    },
+    {
+      "id": 13,
+      "question": "How does PreparedRequest.prepare_body choose between JSON, form data and streaming bodies?",
+      "answerable": true,
+      "reference": "If there is no data and json is not None, the body is the JSON serialised with allow_nan=False (InvalidJSONError on failure), encoded as UTF-8, and the content type becomes application/json (like the other cases, the Content-Type header is only set if none is present, and files given without data would replace the JSON body). If data is iterable but not a str, bytes, list, tuple or Mapping, it is a streamed body: the length is taken with super_len, the body position is recorded with tell() when possible, files raise NotImplementedError, and either Content-Length or Transfer-Encoding: chunked is set. Otherwise files are encoded as multipart, or data is encoded with _encode_params and gets Content-Type application/x-www-form-urlencoded unless it is a string or file-like object; Content-Length is prepared and Content-Type is only set if not already present.",
+      "target_regions": [["src/requests/models.py", 588, 650]]
+    },
+    {
+      "id": 14,
+      "question": "How does Response.json determine encoding and handle invalid JSON?",
+      "answerable": true,
+      "reference": "If the response has no encoding and the content is longer than 3 bytes, Response.json guesses the UTF encoding with guess_json_utf and tries to decode and parse the content with it, ignoring a UnicodeDecodeError. Otherwise, or after that, it parses self.text. A JSONDecodeError in either path is re-raised as requests' own JSONDecodeError (RequestsJSONDecodeError) with the message, document and position.",
+      "target_regions": [["src/requests/models.py", 1101, 1124]]
+    },
+    {
+      "id": 15,
+      "question": "What does Response.raise_for_status do for 3xx, 4xx and 5xx status codes?",
+      "answerable": true,
+      "reference": "It decodes a bytes reason as UTF-8 (falling back to ISO-8859-1). For 400-499 it raises HTTPError with a \"Client Error\" message, for 500-599 it raises HTTPError with a \"Server Error\" message, both including the status code, reason and URL. For 3xx (and other codes) the message stays empty, so nothing is raised.",
+      "target_regions": [["src/requests/models.py", 1160, 1171]]
+    },
+    {
+      "id": 16,
+      "question": "How does HTTPAdapter.send convert timeout values and translate urllib3 exceptions?",
+      "answerable": true,
+      "reference": "A (connect, read) tuple becomes TimeoutSauce(connect=..., read=...) (a malformed tuple raises ValueError), an existing TimeoutSauce is used as is, and any other value is used for both connect and read. urllib3 exceptions are translated: ProtocolError/OSError and ClosedPoolError become ConnectionError; MaxRetryError becomes ConnectTimeout (connect timeout that is not a NewConnectionError), RetryError, ProxyError, SSLError or otherwise ConnectionError; a raw ProxyError becomes ProxyError; SSLError becomes SSLError, ReadTimeoutError becomes ReadTimeout, InvalidHeader becomes InvalidHeader, and other HTTP errors are re-raised.",
+      "target_regions": [["src/requests/adapters.py", 681, 746]]
+    },
+    {
+      "id": 17,
+      "question": "What is the exact current production traffic and p99 latency of applications using Requests?",
+      "answerable": false,
+      "reference": "This cannot be determined from the repository's code; the code contains no production traffic or latency data, so the answer should say so and cite nothing.",
+      "target_regions": []
+    },
+    {
+      "id": 18,
+      "question": "Where does Requests implement automatic OAuth2 access-token refresh, and what refresh endpoint does it call?",
+      "answerable": false,
+      "reference": "The supplied code does not establish any automatic OAuth2 token refresh or refresh endpoint in Requests, so the answer should say it cannot be determined from the code shown, without claiming it is absent from the whole repository, and cite nothing.",
+      "target_regions": []
+    }
+  ]
+}
