@@ -1,0 +1,39 @@
+{
+  "repository": "psf/requests",
+  "commit_sha": "611c6162cbc4ac2020a2f91c7cfa4f3abf9bbb60",
+  "cases_sha256": "78e11811d4168849b2f530ad1dc68dd8af5c6cfe8ab8bdc3253ac06f2b8722b4",
+  "code_sha256": "babf5a28ce7eb670ffb4c0d46d9f02fe7b4019371a552248c39ef9624484635d",
+  "stages": {
+    "1": {
+      "retrieval_mode": "vector",
+      "context_mode": "chunks"
+    },
+    "2": {
+      "retrieval_mode": "hybrid",
+      "context_mode": "chunks"
+    },
+    "3": {
+      "retrieval_mode": "hybrid",
+      "context_mode": "implementation"
+    }
+  },
+  "models": [
+    "qwen3.5:4b",
+    "deepseek-coder-v2:16b"
+  ],
+  "embedding_model": "qwen3-embedding:0.6b",
+  "ollama": {
+    "version": "0.34.1",
+    "url": "http://localhost:11434",
+    "digests": {
+      "qwen3.5:4b": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd",
+      "deepseek-coder-v2:16b": "63fb193b3a9b4322a18e8c6b250ca2e70a5ff531e962dbf95ba089b2566f2fa5",
+      "qwen3-embedding:0.6b": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d"
+    }
+  },
+  "context_tokens": 8192,
+  "max_output_tokens": 700,
+  "ai_timeout_seconds": 180.0,
+  "created_at": "2026-10-18T23:11:44.362975+00:00",
+  "git_commit": "3e1f03239b35881d6229ee15ed8cf453f6df065d"
+}
