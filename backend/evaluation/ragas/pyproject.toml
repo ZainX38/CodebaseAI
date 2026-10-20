@@ -1,0 +1,15 @@
+# A separate project for RAGAS scoring. RAGAS pulls in LangChain and pins an older
+# openai package than the backend uses, so it is kept out of the app's dependencies.
+# It only reads the saved evaluation results, it never imports the app.
+[project]
+name = "codebase-ai-ragas"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "ragas==0.4.3",
+    # ragas 0.4.3 imports langchain_community.chat_models.vertexai, removed in 0.4
+    "langchain-community<0.4",
+]
+
+[tool.uv]
+package = false
