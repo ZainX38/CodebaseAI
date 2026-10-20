@@ -165,7 +165,7 @@ export default function RepositoryTree({
     onFileSelect,
 }: RepositoryTreeProps) {
     return (
-        <aside className="flex min-h-72 min-w-0 flex-col overflow-hidden border-b border-slate-300 bg-white md:min-h-0 md:border-b-0">
+        <aside className="flex h-full min-w-0 flex-col overflow-hidden border-b border-slate-300 bg-white md:border-b-0">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4">
                 <span className="flex size-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
                     <svg

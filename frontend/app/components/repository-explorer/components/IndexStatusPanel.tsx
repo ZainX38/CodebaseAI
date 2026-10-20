@@ -1,6 +1,6 @@
 "use client"
 
-// Shows whether the repository is indexed for AI questions and lets the user start indexing.
+// Indexes the repository automatically when the explorer opens and shows the progress.
 // While a job is running, it polls the status every 3 seconds until it is "ready" or "failed"
 
 import { useEffect, useState } from "react";
@@ -35,14 +35,22 @@ export default function IndexStatusPanel({owner, repoName}: IndexStatusPanelProp
 
     const isActive = indexStatus !== null && ACTIVE_STATES.includes(indexStatus.status);
 
-    // 1. Loads the status once when the explorer opens
+    // 1. Starts indexing as soon as the explorer opens, so the user never has to.
+    // The backend decides what that means: if this commit is already indexed (or being
+    // indexed) it just returns that job, and if there is a new commit it indexes it.
+    // Two requests at once (e.g. React running effects twice in development) can't
+    // start two jobs, because the backend checks and creates the job in one transaction
     useEffect(() => {
         let isCurrentRequest = true;
 
-        getIndexStatus(owner, repoName)
+        startIndexing(owner, repoName)
             .then((status) => { if (isCurrentRequest) setIndexStatus(status); })
-            .catch((error) => {
-                if (isCurrentRequest) setRequestError(error instanceof Error ? error.message : "Status could not be loaded");
+            .catch(async (error) => {
+                if (!isCurrentRequest) return;
+                setRequestError(error instanceof Error ? error.message : "Indexing could not be started");
+                // The status of an earlier index is still worth showing (e.g. "still using commit ...")
+                const status = await getIndexStatus(owner, repoName).catch(() => null);
+                if (isCurrentRequest && status) setIndexStatus(status);
             });
 
         return () => {
@@ -93,10 +101,10 @@ export default function IndexStatusPanel({owner, repoName}: IndexStatusPanelProp
     }
 
     const status = indexStatus?.status ?? "not_indexed";
-    // The button also appears if the first status request failed, so the user isn't stuck
-    const showButton = !isActive && (indexStatus !== null || requestError !== "");
+    // Indexing starts by itself, so a button is only needed when it failed
+    const showButton = !isActive && (status === "failed" || requestError !== "");
     const showProgress = status === "embedding" && indexStatus?.total;
-    const buttonLabel = status === "failed" ? "Retry" : status === "ready" ? "Check for new commits" : "Index repository";
+    const buttonLabel = "Retry";
 
     return (
         <div className="flex min-w-0 shrink-0 items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3">
@@ -132,11 +140,7 @@ export default function IndexStatusPanel({owner, repoName}: IndexStatusPanelProp
                     type="button"
                     onClick={handleStartIndexing}
                     disabled={isStarting}
-                    className={`ml-2 rounded-md px-3 py-1.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                        status === "ready"
-                            ? "border border-slate-600 text-slate-200 hover:bg-slate-800"
-                            : "bg-sky-500 text-slate-950 hover:bg-sky-400"
-                    }`}
+                    className="ml-2 rounded-md bg-sky-500 px-3 py-1.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     {isStarting ? "Starting..." : buttonLabel}
                 </button>

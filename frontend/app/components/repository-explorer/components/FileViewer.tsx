@@ -35,9 +35,8 @@ export default function FileViewer({selectedFile, isLoading, error, highlight}: 
     if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
 
     return (
-        // Below xl the viewer has its own height limit, so a long file scrolls inside it
-        // instead of pushing the chat thousands of pixels down the page
-        <section className="flex h-[70vh] min-h-96 min-w-0 flex-col overflow-hidden border-t-2 border-sky-500 bg-slate-950 md:border-t-0 md:border-l-2 xl:h-auto">
+        // Fills the fixed-size panel the explorer gives it; a long file scrolls inside
+        <section className="flex h-full min-w-0 flex-col overflow-hidden border-t-2 border-sky-500 bg-slate-950 md:border-t-0 md:border-l-2">
             {isLoading && (
                 <div className="flex flex-1 items-center justify-center p-10">
                     <div className="text-center">

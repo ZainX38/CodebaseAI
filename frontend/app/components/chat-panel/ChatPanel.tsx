@@ -93,7 +93,7 @@ export default function ChatPanel({owner, repoName, onOpenCitation}: ChatPanelPr
     }
 
     return (
-        <aside className="flex h-full min-h-96 min-w-0 flex-col border-t border-slate-300 bg-white xl:min-h-0 xl:border-t-0 xl:border-l">
+        <aside className="flex h-full min-w-0 flex-col overflow-hidden border-t border-slate-300 bg-white xl:border-t-0 xl:border-l">
             <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-4">
                 <span className="flex size-9 items-center justify-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700">
                     <svg aria-hidden="true" className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">

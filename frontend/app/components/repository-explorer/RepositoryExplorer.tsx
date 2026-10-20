@@ -25,6 +25,12 @@ import IndexStatusPanel from "./components/IndexStatusPanel";
 import RepositoryTree from "./components/RepositoryTree";
 import type { RepositoryExplorerProps } from "./types/repositoryExplorer";
 
+// Every panel (tree, file viewer, chat) has the same fixed height, whatever it contains:
+// 36rem on smaller screens, and on wide screens the window height minus the header
+// (never less than 36rem). overflow-hidden + min-h-0 stop long files or long chats from
+// stretching the grid row, so their content scrolls inside the panel instead
+const PANEL_SIZE = "h-[36rem] min-h-0 min-w-0 overflow-hidden xl:h-[max(36rem,calc(100vh-15rem))]";
+
 export default function RepositoryExplorer({owner, repoName}: RepositoryExplorerProps) {
     const [entries, setEntries] = useState<RepositoryEntry[]>([]);
     const [selectedFile, setSelectedFile] = useState<RepositoryFile | null>(null);
@@ -165,22 +171,26 @@ export default function RepositoryExplorer({owner, repoName}: RepositoryExplorer
                 </header>
 
                 {/* Tree | file viewer | chat on wide screens; the chat moves below on smaller ones */}
-                <div className="grid min-h-0 flex-1 overflow-hidden rounded-b-2xl border-x border-b border-slate-300 bg-white shadow-xl shadow-slate-300/40 md:grid-cols-[280px_minmax(0,1fr)] xl:h-[calc(100vh-15rem)] xl:min-h-[36rem] xl:grid-cols-[280px_minmax(0,1fr)_400px]">
-                    <RepositoryTree
-                        entries={entries}
-                        owner={owner}
-                        repoName={repoName}
-                        isLoading={isTreeLoading}
-                        error={treeError}
-                        onFileSelect={selectFile}
-                    />
-                    <FileViewer
-                        selectedFile={selectedFile}
-                        isLoading={isFileLoading}
-                        error={fileError}
-                        highlight={highlight}
-                    />
-                    <div className="h-[70vh] min-h-96 md:col-span-2 xl:col-span-1 xl:h-full xl:min-h-0">
+                <div className="grid overflow-hidden rounded-b-2xl border-x border-b border-slate-300 bg-white shadow-xl shadow-slate-300/40 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_400px]">
+                    <div className={PANEL_SIZE}>
+                        <RepositoryTree
+                            entries={entries}
+                            owner={owner}
+                            repoName={repoName}
+                            isLoading={isTreeLoading}
+                            error={treeError}
+                            onFileSelect={selectFile}
+                        />
+                    </div>
+                    <div className={PANEL_SIZE}>
+                        <FileViewer
+                            selectedFile={selectedFile}
+                            isLoading={isFileLoading}
+                            error={fileError}
+                            highlight={highlight}
+                        />
+                    </div>
+                    <div className={`${PANEL_SIZE} md:col-span-2 xl:col-span-1`}>
                         <ChatPanel key={`${owner}/${repoName}`} owner={owner} repoName={repoName} onOpenCitation={openCitation} />
                     </div>
                 </div>
